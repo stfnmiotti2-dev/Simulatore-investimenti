@@ -5,6 +5,7 @@ Web app installabile (PWA) per fare proiezioni **ipotetiche** di fondi, ETF e ti
 ## Cosa fa
 - **Risultati**: riquadri riassuntivi, grafico anni × valore (20 anni di default, modificabili), una linea per titolo più Totale e Soldi versati, accese/spente dalla lista a sinistra. Fascia pessimista–ottimista, interruttori "netto tasse" e "in euro di oggi". Tabella con versato, tre scenari, guadagno, tasse, "costo dei costi" e rendimento netto annuo.
 - **Lettura da foto o PDF** (v2): "Scatta foto" o "Foto o PDF" nella pagina Titoli; Gemini legge nome, ISIN, tipo, SRI e costi dalla scheda/KID e li evidenzia in giallo da controllare. Serve una chiave Gemini (Impostazioni), che resta solo sul dispositivo. Se un modello è sovraccarico l'app ne prova altri da sola.
+- **Titoli di riferimento** (v2.1): spunta "Solo riferimento" su un titolo (es. un ETF indice) per vederlo nel grafico a puntini, simulato con gli stessi soldi dei titoli reali accesi, senza farlo entrare nel totale.
 - **Titoli**: nuovo / modifica / duplica / elimina; tutti i costi (ingresso, fisso per rata, spese correnti, transazione, performance, uscita), quota in titoli di Stato (12,5%), tre rendimenti ipotetici con valori indicativi per tipo; ripartizione di una cifra unica in percentuali.
 - **Impostazioni**: backup Excel (cartella a scelta su PC con Chrome/Edge, altrimenti download), backup automatico, ripristino da Excel, chiave e modello Gemini, anni, inflazione, aliquote, bollo, tema.
 - Funziona offline dopo la prima apertura. I dati restano solo sul dispositivo e nel file Excel.

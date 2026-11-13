@@ -99,6 +99,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   .main-grid, .titoli-grid { grid-template-columns: 1fr; }
   .serie ul { display: flex; flex-wrap: wrap; gap: 4px; }
   .serie li.sep { border-top: 0; margin-top: 0; padding-top: 7px; }
+  .serie li.gruppo { flex-basis: 100%; padding-bottom: 0; }
   .chart-box { height: 340px; order: -1; } /* su telefono: grafico subito, lista delle linee appena sotto */
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .tile { padding: 8px 10px; }
@@ -108,3 +109,11 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   .grid2 { grid-template-columns: 1fr; }
   .topbar nav a { padding: 6px 8px; }
 }
+
+.dot-rif { background: transparent !important; border: 2px dashed; box-sizing: border-box; }
+.serie li.gruppo, tr.gruppo td { color: var(--muted); font-size: .8rem; cursor: default; }
+.serie li.gruppo:hover { background: none; }
+tr.rif td { font-style: italic; }
+.badge { font-size: .7rem; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 0 5px; font-style: normal; }
+.rif-flag { margin: 0 0 12px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 10px; }
+input:disabled { opacity: .5; }

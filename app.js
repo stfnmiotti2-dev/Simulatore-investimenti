@@ -19,7 +19,7 @@
     ['quotaStato', 'Quota titoli di Stato %', 0], ['ingresso', 'Ingresso %', 0], ['fissoRata', 'Costo fisso per rata €', 0],
     ['correnti', 'Spese correnti %', 0], ['transazione', 'Transazione %', 0], ['performance', 'Performance %', 0],
     ['uscita', 'Uscita %', 0], ['rPess', 'Rend. pessimista %', 2], ['rMed', 'Rend. medio %', 6], ['rOtt', 'Rend. ottimista %', 9],
-    ['note', 'Note', ''], ['visibile', 'Visibile', true],
+    ['note', 'Note', ''], ['visibile', 'Visibile', true], ['riferimento', 'Solo riferimento', false],
   ];
   const NUMERICI = new Set(['sri', 'capitale', 'pac', 'quotaStato', 'ingresso', 'fissoRata', 'correnti', 'transazione', 'performance', 'uscita', 'rPess', 'rMed', 'rOtt']);
   const ETICHETTE_IMP = {
@@ -34,11 +34,11 @@
   function esempi() {
     return [
       Object.assign(titoloVuoto(), { id: nuovoId(), nome: 'Esempio: fondo azionario di banca', tipo: 'az_mondo', sri: 4, colore: '#e07b39',
-        capitale: 15000, pac: 250, ingresso: 3, fissoRata: 0, correnti: 2.0, transazione: 0.2, performance: 0,
+        capitale: 30000, pac: 500, ingresso: 3, fissoRata: 0, correnti: 2.0, transazione: 0.2, performance: 0,
         rPess: 2, rMed: 6, rOtt: 9, note: 'Costi simili ai fondi Eurizon proposti. Modificalo o cancellalo.' }),
       Object.assign(titoloVuoto(), { id: nuovoId(), nome: 'Esempio: ETF MSCI World', isin: 'IE00B4L5Y983', tipo: 'az_mondo', sri: 4, colore: '#2a78b8',
-        capitale: 15000, pac: 250, ingresso: 0, fissoRata: 0, correnti: 0.2, transazione: 0, performance: 0,
-        rPess: 2, rMed: 6, rOtt: 9, note: 'Stesso mercato, costi da ETF. Modificalo o cancellalo.' }),
+        capitale: 0, pac: 0, ingresso: 0, fissoRata: 0, correnti: 0.2, transazione: 0, performance: 0, riferimento: true,
+        rPess: 2, rMed: 6, rOtt: 9, note: 'Riferimento: stesso mercato con costi da ETF, fuori dal totale. Modificalo o cancellalo.' }),
     ];
   }
 
@@ -94,9 +94,19 @@
 
   // ---------------- Pagina principale ----------------
   let grafico = null;
+  // I titoli "di riferimento" (es. un ETF indice) non entrano nel totale: vengono simulati con gli stessi soldi
+  // dei titoli reali accesi, così la loro linea si confronta direttamente con il Totale.
+  const isRif = (f) => f.riferimento === true;
+  function soldiReali() {
+    const reali = stato.titoli.filter((f) => !isRif(f));
+    const accesi = reali.filter((f) => f.visibile !== false);
+    const base = accesi.length ? accesi : reali;
+    return { capitale: base.reduce((a, f) => a + num(f.capitale), 0), pac: base.reduce((a, f) => a + num(f.pac), 0) };
+  }
   function calcoli() {
     const s = stato.impostazioni;
-    return stato.titoli.map((f) => ({ f, r: calcolaTitolo(f, s) }));
+    const soldi = soldiReali();
+    return stato.titoli.map((f) => ({ f, r: calcolaTitolo(isRif(f) ? Object.assign({}, f, soldi) : f, s) }));
   }
 
   function sommaSerie(lista, scen) {
@@ -126,7 +136,8 @@
     $('#lbl-modo').textContent = '· ' + (s.netto ? 'netto tasse' : 'lordo tasse') + (s.realeOggi ? ', in euro di oggi' : ', in euro nominali');
 
     const tutti = calcoli();
-    const attivi = tutti.filter((x) => x.f.visibile !== false);
+    const attivi = tutti.filter((x) => x.f.visibile !== false && !isRif(x.f));
+    const rifAccesi = tutti.filter((x) => x.f.visibile !== false && isRif(x.f));
     const tot = { pess: sommaSerie(attivi, 'pess'), med: sommaSerie(attivi, 'med'), ott: sommaSerie(attivi, 'ott') };
 
     // Riquadri riassuntivi (sui titoli accesi)
@@ -137,7 +148,7 @@
     const costiTot = attivi.reduce((a, x) => a + x.r.costoDeiCosti, 0);
     const v = (p) => p ? mostra(p, s) : null;
     $('#tiles').innerHTML = [
-      ['Capitale iniziale', euro(capTot), attivi.length + ' titoli accesi'],
+      ['Capitale iniziale', euro(capTot), attivi.length + (attivi.length === 1 ? ' titolo acceso' : ' titoli accesi') + (rifAccesi.length ? ' + ' + rifAccesi.length + ' rif.' : '')],
       ['Versamento mensile', euro(pacTot), euro(pacTot * 12) + ' l\'anno'],
       ['Versato in ' + s.anni + ' anni', euro(fineMed ? fineMed.versato : 0), 'soldi tuoi'],
       ['Valore finale (medio)', euro(v(fineMed)), 'da ' + euro(v(tot.pess.length ? ult(tot.pess) : null)) + ' a ' + euro(v(tot.ott.length ? ult(tot.ott) : null))],
@@ -148,31 +159,37 @@
     const li = [];
     const voce = (id, acceso, dot, nome, cls) => `<li data-id="${id}" class="${cls || ''} ${acceso ? '' : 'off'}" role="checkbox" aria-checked="${acceso}">` +
       `<input type="checkbox" tabindex="-1" ${acceso ? 'checked' : ''}>${dot}<span class="nome">${nome}</span></li>`;
-    tutti.forEach(({ f }) => li.push(voce(f.id, f.visibile !== false, `<span class="dot" style="background:${esc(f.colore)}"></span>`, esc(f.nome))));
+    tutti.filter((x) => !isRif(x.f)).forEach(({ f }) => li.push(voce(f.id, f.visibile !== false, `<span class="dot" style="background:${esc(f.colore)}"></span>`, esc(f.nome))));
     if (!tutti.length) li.push('<li class="hint">Nessun titolo: aggiungilo dalla pagina Titoli.</li>');
     li.push(voce('__tot', stato.mostraTotale, '<span class="dot" style="background:var(--text)"></span>', '<b>Totale</b>', 'sep'));
     li.push(voce('__ver', stato.mostraVersato, '<span class="dot dash"></span>', 'Soldi versati'));
+    const rif = tutti.filter((x) => isRif(x.f));
+    if (rif.length) {
+      li.push('<li class="sep gruppo">Riferimenti (fuori dal totale)</li>');
+      rif.forEach(({ f }) => li.push(voce(f.id, f.visibile !== false, `<span class="dot dot-rif" style="border-color:${esc(f.colore)}"></span>`, '<i>' + esc(f.nome) + '</i>')));
+    }
     $('#lista-serie').innerHTML = li.join('');
 
-    disegnaGrafico(tutti, attivi, tot);
-    disegnaTabella(attivi, tot);
+    disegnaGrafico(attivi, rifAccesi, tot);
+    disegnaTabella(attivi, rifAccesi, tot);
   }
 
-  function disegnaGrafico(tutti, attivi, tot) {
+  function disegnaGrafico(attivi, rifAccesi, tot) {
     const s = stato.impostazioni;
     const css = getComputedStyle(document.documentElement);
     const cText = css.getPropertyValue('--text').trim(), cMuted = css.getPropertyValue('--muted').trim(), cGrid = css.getPropertyValue('--grid').trim();
     const anni = Array.from({ length: Math.round(num(s.anni)) + 1 }, (_, i) => i);
     const ds = [];
-    const serie = (nome, colore, r, larghezza) => {
+    const serie = (nome, colore, r, larghezza, tratteggio) => {
       if (s.fascia) {
         ds.push({ label: nome + ' (pess.)', data: r.pess.map((p) => mostra(p, s)), borderWidth: 0, pointRadius: 0, fill: false, _banda: true });
         ds.push({ label: nome + ' (ott.)', data: r.ott.map((p) => mostra(p, s)), borderWidth: 0, pointRadius: 0, fill: '-1', backgroundColor: alpha(colore, 0.13), _banda: true });
       }
-      ds.push({ label: nome, data: r.med.map((p) => mostra(p, s)), borderColor: colore, backgroundColor: colore, borderWidth: larghezza, pointRadius: 0, pointHitRadius: 6, tension: 0.15 });
+      ds.push({ label: nome, data: r.med.map((p) => mostra(p, s)), borderColor: colore, backgroundColor: colore, borderWidth: larghezza, pointRadius: 0, pointHitRadius: 6, tension: 0.15, borderDash: tratteggio || [] });
     };
     attivi.forEach(({ f, r }) => serie(f.nome, f.colore, r, 2.2));
     if (stato.mostraTotale && attivi.length > 1) serie('Totale', cText, tot, 3.2);
+    rifAccesi.forEach(({ f, r }) => serie(f.nome + ' (rif.)', f.colore, r, 2.2, [2, 4]));
     if (stato.mostraVersato && tot.med.length) {
       ds.push({ label: 'Soldi versati', data: tot.med.map((p) => mostra(p, s, 'versato')), borderColor: cMuted, borderDash: [6, 4], borderWidth: 1.8, pointRadius: 0, stepped: false });
     }
@@ -201,7 +218,7 @@
     grafico = new Chart($('#grafico'), cfg);
   }
 
-  function disegnaTabella(attivi, tot) {
+  function disegnaTabella(attivi, rifAccesi, tot) {
     const s = stato.impostazioni;
     const ult = (a) => a[a.length - 1];
     const riga = (nome, colore, r, costi, rend, cls) => {
@@ -216,6 +233,10 @@
     if (!attivi.length) html += `<tr><td colspan="9">Nessun titolo acceso. Accendine uno dalla lista o aggiungilo dalla pagina Titoli.</td></tr>`;
     attivi.forEach(({ f, r }) => { html += riga(f.nome, f.colore, r, r.costoDeiCosti, r.rendEffettivo); });
     if (attivi.length > 1) html += riga('Totale', null, tot, attivi.reduce((a, x) => a + x.r.costoDeiCosti, 0), null, 'totale');
+    if (rifAccesi.length) {
+      html += `<tr class="gruppo"><td colspan="9">Riferimenti: stessi soldi del totale, ma solo per confronto</td></tr>`;
+      rifAccesi.forEach(({ f, r }) => { html += riga(f.nome, f.colore, r, r.costoDeiCosti, r.rendEffettivo, 'rif'); });
+    }
     $('#tab-risultati').innerHTML = html + '</tbody>';
   }
 
@@ -245,15 +266,16 @@
 
   function disegnaTitoli() {
     $('#lista-titoli').innerHTML = stato.titoli.length ? stato.titoli.map((f) => `
-      <li data-id="${f.id}"><span class="dot" style="background:${esc(f.colore)}"></span><span class="nome" title="${esc(f.nome)}">${esc(f.nome)}</span>
+      <li data-id="${f.id}"><span class="dot" style="background:${esc(f.colore)}"></span><span class="nome" title="${esc(f.nome)}">${esc(f.nome)}${isRif(f) ? ' <small class="badge">riferimento</small>' : ''}</span>
       <button data-az="mod">Modifica</button><button data-az="dup">Duplica</button><button data-az="del" class="danger">Elimina</button></li>`).join('')
       : '<li>Nessun titolo. Premi "+ Nuovo titolo".</li>';
     // Ripartizione
-    const capT = stato.titoli.reduce((a, f) => a + num(f.capitale), 0);
-    const pacT = stato.titoli.reduce((a, f) => a + num(f.pac), 0);
+    const reali = stato.titoli.filter((f) => !isRif(f));
+    const capT = reali.reduce((a, f) => a + num(f.capitale), 0);
+    const pacT = reali.reduce((a, f) => a + num(f.pac), 0);
     $('#rip-cap').value = capT; $('#rip-pac').value = pacT;
-    const n = stato.titoli.length || 1;
-    $('#rip-quote').innerHTML = stato.titoli.map((f) => {
+    const n = reali.length || 1;
+    $('#rip-quote').innerHTML = reali.map((f) => {
       const q = capT > 0 ? num(f.capitale) / capT * 100 : (pacT > 0 ? num(f.pac) / pacT * 100 : 100 / n);
       return `<label>${esc(f.nome)}<span><input type="number" min="0" max="100" step="1" data-id="${f.id}" value="${Math.round(q * 10) / 10}"> %</span></label>`;
     }).join('');
@@ -279,7 +301,8 @@
     inModifica = f ? f.id : null;
     const dati = f || Object.assign(titoloVuoto(), { colore: PALETTE[stato.titoli.length % PALETTE.length] });
     if (!f) { const r = TIPI[dati.tipo].r; dati.rPess = r[0]; dati.rMed = r[1]; dati.rOtt = r[2]; }
-    CAMPI.forEach(([k]) => { const el = form.elements[k]; if (el) el.value = dati[k] ?? ''; });
+    CAMPI.forEach(([k]) => { const el = form.elements[k]; if (!el) return; if (el.type === 'checkbox') el.checked = !!dati[k]; else el.value = dati[k] ?? ''; });
+    aggiornaRif();
     $('#form-titolo-h').textContent = f ? 'Modifica: ' + f.nome : 'Nuovo titolo';
     form.querySelectorAll('.da-verificare').forEach((el) => el.classList.remove('da-verificare'));
     $('#foto-stato').hidden = true;
@@ -287,13 +310,19 @@
   }
   function leggiForm() {
     const d = {};
-    CAMPI.forEach(([k]) => { const el = form.elements[k]; if (el) d[k] = NUMERICI.has(k) ? (el.value === '' ? (k === 'sri' ? '' : 0) : num(el.value)) : el.value.trim(); });
+    CAMPI.forEach(([k]) => { const el = form.elements[k]; if (el && el.type === 'checkbox') d[k] = el.checked; else if (el) d[k] = NUMERICI.has(k) ? (el.value === '' ? (k === 'sri' ? '' : 0) : num(el.value)) : el.value.trim(); });
     return d;
   }
   function aggiornaCostoTotale() {
     const d = leggiForm();
     $('#costo-totale').textContent = 'Costo annuo del prodotto: ' + pct(costoAnnuo(d)) + ' (gestione + transazione + performance), più ' + pct(d.ingresso) + ' di ingresso su ogni versamento.';
   }
+  function aggiornaRif() {
+    const rifOn = form.elements.riferimento.checked;
+    ['capitale', 'pac'].forEach((k) => { form.elements[k].disabled = rifOn; });
+    $('#nota-rif').hidden = !rifOn;
+  }
+  form.elements.riferimento.addEventListener('change', aggiornaRif);
   form.addEventListener('input', (e) => { e.target.classList.remove('da-verificare'); aggiornaCostoTotale(); });
   $('#btn-default-r').addEventListener('click', () => {
     const r = TIPI[form.elements.tipo.value].r;
@@ -502,8 +531,8 @@ Percentuali come numeri (es. "2,46%" -> 2.46). Campi:
       const r = { Anno: a };
       let ver = 0, tot = 0, totP = 0, totO = 0;
       tutti.forEach(({ f, r: x }) => {
-        r[f.nome + ' (medio)'] = Math.round(mostra(x.med[a], s));
-        if (f.visibile !== false) { ver += mostra(x.med[a], s, 'versato'); tot += mostra(x.med[a], s); totP += mostra(x.pess[a], s); totO += mostra(x.ott[a], s); }
+        r[f.nome + (isRif(f) ? ' (riferimento, medio)' : ' (medio)')] = Math.round(mostra(x.med[a], s));
+        if (f.visibile !== false && !isRif(f)) { ver += mostra(x.med[a], s, 'versato'); tot += mostra(x.med[a], s); totP += mostra(x.pess[a], s); totO += mostra(x.ott[a], s); }
       });
       Object.assign(r, { 'Versato (accesi)': Math.round(ver), 'Totale pessimista': Math.round(totP), 'Totale medio': Math.round(tot), 'Totale ottimista': Math.round(totO) });
       righe.push(r);
@@ -552,6 +581,7 @@ Percentuali come numeri (es. "2,46%" -> 2.46). Campi:
         CAMPI.forEach(([k, et]) => { if (et in riga) f[k] = riga[et]; });
         NUMERICI.forEach((k) => { f[k] = k === 'sri' && f[k] === '' ? '' : num(f[k]); });
         f.tipo = nomeTipo[f.tipo] || (TIPI[f.tipo] ? f.tipo : 'altro');
+        f.riferimento = f.riferimento === true || ['TRUE', 'VERO', 'SI', 'SÌ', '1'].includes(String(f.riferimento).toUpperCase());
         f.visibile = !(f.visibile === false || String(f.visibile).toUpperCase() === 'FALSE' || f.visibile === 'falso');
         f.nome = String(f.nome); f.isin = String(f.isin); f.note = String(f.note); f.colore = String(f.colore || '#2a78b8');
         return f;

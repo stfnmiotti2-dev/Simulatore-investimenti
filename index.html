@@ -9,11 +9,11 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="style.css?v=2.0.2">
+<link rel="stylesheet" href="style.css?v=2.1.0">
 </head>
 <body>
 <header class="topbar">
-  <a href="#home" class="brand">📈 Simulatore <small class="ver">v2</small></a>
+  <a href="#home" class="brand">📈 Simulatore <small class="ver">v2.1</small></a>
   <nav>
     <a href="#home" data-page="home">Risultati</a>
     <a href="#titoli" data-page="titoli">Titoli</a>
@@ -38,7 +38,7 @@
       <div class="row-between"><h3>Mostra nel grafico</h3>
         <span class="mini"><button type="button" id="btn-tutti">Tutti</button><button type="button" id="btn-nessuno">Nessuno</button></span></div>
       <ul id="lista-serie"></ul>
-      <p class="hint">Spunta o togli la spunta per accendere o spegnere una linea. Il totale somma solo i titoli accesi.</p>
+      <p class="hint">Spunta o togli la spunta per accendere o spegnere una linea. Il totale somma solo i titoli accesi; i riferimenti (linea a puntini) restano fuori.</p>
     </aside>
     <div class="card chart-box">
       <canvas id="grafico"></canvas>
@@ -88,7 +88,9 @@
           <label>Colore linea<input name="colore" type="color"></label>
         </div>
       </fieldset>
+      <label class="sw rif-flag"><input type="checkbox" name="riferimento"> Solo riferimento: non entra nel totale, serve per confrontare l'andamento</label>
       <fieldset><legend>Soldi</legend>
+        <p class="hint" id="nota-rif" hidden>Un titolo di riferimento usa automaticamente gli stessi soldi (capitale e versamento) dei titoli reali accesi, così puoi confrontarlo con il Totale.</p>
         <div class="grid2">
           <label>Capitale iniziale (€)<input name="capitale" type="number" min="0" step="100"></label>
           <label>Versamento mensile PAC (€)<input name="pac" type="number" min="0" step="10"></label>
@@ -174,7 +176,7 @@
 
 <script src="lib/chart.umd.min.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
-<script src="calc.js?v=2.0.2"></script>
-<script src="app.js?v=2.0.2"></script>
+<script src="calc.js?v=2.1.0"></script>
+<script src="app.js?v=2.1.0"></script>
 </body>
 </html>
