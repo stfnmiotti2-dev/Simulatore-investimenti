@@ -9,7 +9,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="style.css?v=2.1.0">
+<link rel="stylesheet" href="style.css?v=2.1.1">
 </head>
 <body>
 <header class="topbar">
@@ -157,7 +157,33 @@
   </div>
 
   <div class="card">
-    <h3>Lettura da foto (Gemini)</h3>
+    <div class="row-between"><h3>Lettura da foto (Gemini)</h3>
+      <button type="button" id="btn-info-gemini" class="info-btn" aria-expanded="false" aria-controls="info-gemini">ⓘ Info chiave</button></div>
+    <div id="info-gemini" class="info-box" hidden>
+      <h4>Cos'è</h4>
+      <p>La chiave API Gemini è un codice personale che permette all'app di chiedere a Gemini (l'intelligenza artificiale di Google) di leggere le foto delle schede. È gratuita: con il piano gratuito puoi leggere molte schede al giorno.</p>
+      <h4>Se non ce l'hai: come crearla</h4>
+      <ol>
+        <li>Apri <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> e accedi con il tuo account Google.</li>
+        <li>La prima volta accetta le condizioni d'uso.</li>
+        <li>Tocca <b>"Create API key"</b> (Crea chiave API). Se chiede un progetto, scegli quello proposto o creane uno nuovo.</li>
+        <li>Tocca l'icona di copia accanto alla chiave.</li>
+        <li>Torna qui, incollala nel campo "Chiave API Gemini" e tocca fuori dal campo: compare "Chiave Gemini salvata".</li>
+      </ol>
+      <h4>Se l'hai già creata: come ritrovarla</h4>
+      <ol>
+        <li>Apri la stessa pagina <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> con lo stesso account Google.</li>
+        <li>Trovi l'elenco delle chiavi: tocca quella che ti serve (o l'icona di copia) e copiala.</li>
+        <li>Se la pagina mostra solo una parte del codice o non la trovi, creane una nuova: quelle vecchie continuano a funzionare.</li>
+      </ol>
+      <h4>Buono a sapersi</h4>
+      <ul>
+        <li>La chiave di solito inizia con <code>AIza…</code>; alcune più recenti iniziano con <code>AQ.</code>. Vanno bene entrambe.</li>
+        <li>Resta salvata <b>solo su questo dispositivo</b> e non finisce nel backup Excel: su un altro telefono o PC va inserita di nuovo.</li>
+        <li>Non condividerla e non scriverla in chat o email. Se pensi che l'abbia vista qualcuno, cancellala da AI Studio e creane una nuova.</li>
+        <li>"Chiave non valida" = copiata male o cancellata. "Quota esaurita" = troppe letture per oggi, riprova domani. "Sovraccarichi" = server di Google occupati, riprova tra qualche minuto.</li>
+      </ul>
+    </div>
     <div class="grid2">
       <label>Chiave API Gemini<input type="password" id="set-gemini-key" autocomplete="off" placeholder="Incolla qui la chiave"><small>Resta solo su questo dispositivo, non va nel backup Excel. Si crea su aistudio.google.com/apikey</small></label>
       <label>Modello<input id="set-gemini-model" placeholder="gemini-flash-latest"><small>Lascia vuoto per il predefinito</small></label>
@@ -176,7 +202,7 @@
 
 <script src="lib/chart.umd.min.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
-<script src="calc.js?v=2.1.0"></script>
-<script src="app.js?v=2.1.0"></script>
+<script src="calc.js?v=2.1.1"></script>
+<script src="app.js?v=2.1.1"></script>
 </body>
 </html>

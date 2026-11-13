@@ -476,6 +476,10 @@ Percentuali come numeri (es. "2,46%" -> 2.46). Campi:
   }));
   $('#set-tema').addEventListener('change', (e) => { stato.impostazioni.tema = e.target.value; salva(); applicaTema(); });
   $('#set-auto').addEventListener('change', (e) => { stato.impostazioni.autoBackup = e.target.checked; salva(); });
+  $('#btn-info-gemini').addEventListener('click', (e) => {
+    const box = $('#info-gemini'); box.hidden = !box.hidden; e.currentTarget.setAttribute('aria-expanded', String(!box.hidden));
+    e.currentTarget.textContent = box.hidden ? 'ⓘ Info chiave' : '✕ Chiudi info';
+  });
   $('#set-gemini-key').addEventListener('change', (e) => { scriviLocale(GEMINI_KEY, e.target.value.trim()); toast('Chiave Gemini salvata su questo dispositivo'); });
   $('#set-gemini-model').addEventListener('change', (e) => { scriviLocale(GEMINI_MODEL, e.target.value.trim()); toast('Modello salvato'); });
   $('#btn-reset').addEventListener('click', () => {
