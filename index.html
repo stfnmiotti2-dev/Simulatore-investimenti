@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Simulatore investimenti</title>
+<meta name="description" content="Proiezioni ipotetiche di fondi ed ETF con costi, tasse e inflazione">
+<meta name="theme-color" content="#1f5f8b">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <a href="#home" class="brand">📈 Simulatore</a>
+  <nav>
+    <a href="#home" data-page="home">Risultati</a>
+    <a href="#titoli" data-page="titoli">Titoli</a>
+    <a href="#impostazioni" data-page="impostazioni">Impostazioni</a>
+  </nav>
+</header>
+
+<main>
+<!-- ============ PAGINA PRINCIPALE ============ -->
+<section id="page-home" class="page">
+  <div class="tiles" id="tiles"></div>
+
+  <div class="controls card">
+    <label>Anni <input type="number" id="ctl-anni" min="1" max="60" step="1"></label>
+    <label class="sw"><input type="checkbox" id="ctl-netto"> Netto tasse</label>
+    <label class="sw"><input type="checkbox" id="ctl-reale"> In euro di oggi</label>
+    <label class="sw"><input type="checkbox" id="ctl-fascia"> Fascia pessimista–ottimista</label>
+  </div>
+
+  <div class="main-grid">
+    <aside class="card serie">
+      <h3>Linee</h3>
+      <ul id="lista-serie"></ul>
+      <p class="hint">Tocca un nome per accendere o spegnere la sua linea.</p>
+    </aside>
+    <div class="card chart-box">
+      <canvas id="grafico"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Risultati dopo <span id="lbl-anni"></span> anni <small id="lbl-modo"></small></h3>
+    <div class="table-wrap"><table id="tab-risultati"></table></div>
+    <p class="hint">"Costo dei costi": quanto avresti in più alla fine (scenario medio, netto) se il prodotto non avesse costi di ingresso, gestione, transazione, performance e uscita. Bollo e tasse restano.</p>
+  </div>
+  <p class="disclaimer">Simulazione ipotetica a scopo educativo: i rendimenti futuri non sono prevedibili e possono essere negativi. Non è una consulenza finanziaria.</p>
+</section>
+
+<!-- ============ TITOLI: INSERIMENTO / MODIFICA / CANCELLAZIONE ============ -->
+<section id="page-titoli" class="page" hidden>
+  <div class="titoli-grid">
+    <div class="card">
+      <div class="row-between"><h3>Titoli inseriti</h3><button id="btn-nuovo" class="primary">+ Nuovo titolo</button></div>
+      <ul id="lista-titoli" class="lista-titoli"></ul>
+
+      <h3>Ripartisci una cifra unica</h3>
+      <div class="grid2">
+        <label>Capitale iniziale totale (€)<input type="number" id="rip-cap" min="0" step="100"></label>
+        <label>Versamento mensile totale (€)<input type="number" id="rip-pac" min="0" step="10"></label>
+      </div>
+      <div id="rip-quote"></div>
+      <button id="btn-ripartisci">Applica ripartizione</button>
+      <p class="hint" id="rip-somma"></p>
+    </div>
+
+    <form id="form-titolo" class="card" autocomplete="off">
+      <div class="row-between">
+        <h3 id="form-titolo-h">Nuovo titolo</h3>
+        <button type="button" id="btn-foto" disabled title="Arriva nella versione 2">📷 Leggi da foto (v2)</button>
+      </div>
+      <fieldset><legend>Identità</legend>
+        <div class="grid2">
+          <label>Nome<input name="nome" required placeholder="es. ETF MSCI World"></label>
+          <label>ISIN<input name="isin" placeholder="es. IE00B4L5Y983"></label>
+          <label>Tipo<select name="tipo" id="sel-tipo"></select></label>
+          <label>Rischio SRI (1-7)<input name="sri" type="number" min="1" max="7"></label>
+          <label>Colore linea<input name="colore" type="color"></label>
+        </div>
+      </fieldset>
+      <fieldset><legend>Soldi</legend>
+        <div class="grid2">
+          <label>Capitale iniziale (€)<input name="capitale" type="number" min="0" step="100"></label>
+          <label>Versamento mensile PAC (€)<input name="pac" type="number" min="0" step="10"></label>
+          <label>Quota in titoli di Stato (%)<input name="quotaStato" type="number" min="0" max="100" step="1"><small>Tassata al 12,5% invece del 26%</small></label>
+        </div>
+      </fieldset>
+      <fieldset><legend>Costi</legend>
+        <div class="grid2">
+          <label>Ingresso (%)<input name="ingresso" type="number" min="0" step="0.01"><small>Sul capitale e su ogni rata</small></label>
+          <label>Costo fisso per acquisto/rata (€)<input name="fissoRata" type="number" min="0" step="0.5"></label>
+          <label>Spese correnti / TER (% annuo)<input name="correnti" type="number" min="0" step="0.01"></label>
+          <label>Costi di transazione (% annuo)<input name="transazione" type="number" min="0" step="0.01"></label>
+          <label>Commissioni di performance (% annuo, dal KID)<input name="performance" type="number" min="0" step="0.01"></label>
+          <label>Uscita (%)<input name="uscita" type="number" min="0" step="0.01"></label>
+        </div>
+        <p class="hint" id="costo-totale"></p>
+      </fieldset>
+      <fieldset><legend>Rendimento lordo annuo ipotetico (%)</legend>
+        <div class="grid3">
+          <label>Pessimista<input name="rPess" type="number" step="0.1"></label>
+          <label>Medio<input name="rMed" type="number" step="0.1"></label>
+          <label>Ottimista<input name="rOtt" type="number" step="0.1"></label>
+        </div>
+        <button type="button" id="btn-default-r">Usa valori indicativi del tipo</button>
+        <p class="hint">Rendimento del mercato prima dei costi del prodotto. I costi li toglie l'app.</p>
+      </fieldset>
+      <label>Note<textarea name="note" rows="2"></textarea></label>
+      <div class="row-end">
+        <button type="button" id="btn-annulla">Annulla</button>
+        <button type="submit" class="primary">Salva titolo</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- ============ IMPOSTAZIONI ============ -->
+<section id="page-impostazioni" class="page" hidden>
+  <div class="card">
+    <h3>Backup Excel</h3>
+    <p id="backup-info" class="hint"></p>
+    <div class="row-wrap">
+      <button id="btn-cartella">📁 Scegli cartella di backup</button>
+      <button id="btn-salva-excel" class="primary">💾 Salva backup Excel ora</button>
+      <label class="button-like">📂 Ripristina da Excel<input type="file" id="file-ripristina" accept=".xlsx" hidden></label>
+    </div>
+    <label class="sw"><input type="checkbox" id="set-auto"> Backup automatico a ogni modifica (solo con cartella scelta)</label>
+    <p class="hint" id="backup-stato"></p>
+  </div>
+
+  <div class="card">
+    <h3>Calcoli</h3>
+    <div class="grid2">
+      <label>Anni del grafico all'apertura<input type="number" id="set-anni" min="1" max="60"></label>
+      <label>Inflazione attesa (% annuo)<input type="number" id="set-inflazione" step="0.1"></label>
+      <label>Tasse sui guadagni (%)<input type="number" id="set-aliquota" step="0.1"></label>
+      <label>Tasse sui titoli di Stato (%)<input type="number" id="set-aliquotaStato" step="0.1"></label>
+      <label>Imposta di bollo (% annuo)<input type="number" id="set-bollo" step="0.01"></label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Aspetto</h3>
+    <label>Tema<select id="set-tema"><option value="auto">Come il dispositivo</option><option value="light">Chiaro</option><option value="dark">Scuro</option></select></label>
+  </div>
+
+  <div class="card">
+    <h3>Lettura da foto (versione 2)</h3>
+    <p class="hint">Qui inserirai la tua chiave Gemini per leggere le schede dalla foto. In arrivo.</p>
+  </div>
+
+  <div class="card">
+    <h3>Dati</h3>
+    <button id="btn-reset" class="danger">Cancella tutti i dati e ricarica gli esempi</button>
+  </div>
+</section>
+</main>
+
+<div id="toast" role="status"></div>
+
+<script src="lib/chart.umd.min.js"></script>
+<script src="lib/xlsx.full.min.js"></script>
+<script src="calc.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
