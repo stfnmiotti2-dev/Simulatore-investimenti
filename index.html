@@ -35,9 +35,10 @@
 
   <div class="main-grid">
     <aside class="card serie">
-      <h3>Linee</h3>
+      <div class="row-between"><h3>Mostra nel grafico</h3>
+        <span class="mini"><button type="button" id="btn-tutti">Tutti</button><button type="button" id="btn-nessuno">Nessuno</button></span></div>
       <ul id="lista-serie"></ul>
-      <p class="hint">Tocca un nome per accendere o spegnere la sua linea.</p>
+      <p class="hint">Spunta o togli la spunta per accendere o spegnere una linea. Il totale somma solo i titoli accesi.</p>
     </aside>
     <div class="card chart-box">
       <canvas id="grafico"></canvas>
@@ -72,8 +73,12 @@
     <form id="form-titolo" class="card" autocomplete="off">
       <div class="row-between">
         <h3 id="form-titolo-h">Nuovo titolo</h3>
-        <button type="button" id="btn-foto" disabled title="Arriva nella versione 2">📷 Leggi da foto (v2)</button>
+        <span class="row-wrap foto-btns">
+          <label class="button-like">📷 Scatta foto<input type="file" id="foto-camera" accept="image/*" capture="environment" hidden></label>
+          <label class="button-like">🖼️ Foto o PDF<input type="file" id="foto-file" accept="image/*,application/pdf" hidden></label>
+        </span>
       </div>
+      <div id="foto-stato" class="avviso" hidden></div>
       <fieldset><legend>Identità</legend>
         <div class="grid2">
           <label>Nome<input name="nome" required placeholder="es. ETF MSCI World"></label>
@@ -150,8 +155,12 @@
   </div>
 
   <div class="card">
-    <h3>Lettura da foto (versione 2)</h3>
-    <p class="hint">Qui inserirai la tua chiave Gemini per leggere le schede dalla foto. In arrivo.</p>
+    <h3>Lettura da foto (Gemini)</h3>
+    <div class="grid2">
+      <label>Chiave API Gemini<input type="password" id="set-gemini-key" autocomplete="off" placeholder="AIza..."><small>Resta solo su questo dispositivo, non va nel backup Excel. Si crea su aistudio.google.com/apikey</small></label>
+      <label>Modello<input id="set-gemini-model" placeholder="gemini-flash-latest"><small>Lascia vuoto per il predefinito</small></label>
+    </div>
+    <p class="hint">La foto o il PDF vengono inviati a Google per la lettura. I valori letti vanno sempre controllati prima di salvarli.</p>
   </div>
 
   <div class="card">

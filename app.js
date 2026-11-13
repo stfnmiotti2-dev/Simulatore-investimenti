@@ -146,9 +146,12 @@
 
     // Lista delle linee a sinistra
     const li = [];
-    tutti.forEach(({ f }) => li.push(`<li data-id="${f.id}" class="${f.visibile === false ? 'off' : ''}"><span class="dot" style="background:${esc(f.colore)}"></span><span class="nome">${esc(f.nome)}</span></li>`));
-    li.push(`<li data-id="__tot" class="sep ${stato.mostraTotale ? '' : 'off'}"><span class="dot" style="background:var(--text)"></span><span class="nome"><b>Totale</b></span></li>`);
-    li.push(`<li data-id="__ver" class="${stato.mostraVersato ? '' : 'off'}"><span class="dot dash"></span><span class="nome">Soldi versati</span></li>`);
+    const voce = (id, acceso, dot, nome, cls) => `<li data-id="${id}" class="${cls || ''} ${acceso ? '' : 'off'}" role="checkbox" aria-checked="${acceso}">` +
+      `<input type="checkbox" tabindex="-1" ${acceso ? 'checked' : ''}>${dot}<span class="nome">${nome}</span></li>`;
+    tutti.forEach(({ f }) => li.push(voce(f.id, f.visibile !== false, `<span class="dot" style="background:${esc(f.colore)}"></span>`, esc(f.nome))));
+    if (!tutti.length) li.push('<li class="hint">Nessun titolo: aggiungilo dalla pagina Titoli.</li>');
+    li.push(voce('__tot', stato.mostraTotale, '<span class="dot" style="background:var(--text)"></span>', '<b>Totale</b>', 'sep'));
+    li.push(voce('__ver', stato.mostraVersato, '<span class="dot dash"></span>', 'Soldi versati'));
     $('#lista-serie').innerHTML = li.join('');
 
     disegnaGrafico(tutti, attivi, tot);
@@ -217,13 +220,16 @@
   }
 
   $('#lista-serie').addEventListener('click', (e) => {
-    const li = e.target.closest('li'); if (!li) return;
+    const li = e.target.closest('li'); if (!li || !li.dataset.id) return;
     const id = li.dataset.id;
     if (id === '__tot') stato.mostraTotale = !stato.mostraTotale;
     else if (id === '__ver') stato.mostraVersato = !stato.mostraVersato;
     else { const f = stato.titoli.find((t) => t.id === id); if (f) f.visibile = f.visibile === false; }
     salva(); disegnaHome();
   });
+  const tuttiVisibili = (v) => { stato.titoli.forEach((f) => { f.visibile = v; }); salva(); disegnaHome(); };
+  $('#btn-tutti').addEventListener('click', () => tuttiVisibili(true));
+  $('#btn-nessuno').addEventListener('click', () => tuttiVisibili(false));
   $('#ctl-anni').addEventListener('change', (e) => {
     const n = Math.min(60, Math.max(1, Math.round(num(e.target.value)) || 20));
     stato.impostazioni.anni = n; salva(); disegnaHome();
@@ -275,6 +281,8 @@
     if (!f) { const r = TIPI[dati.tipo].r; dati.rPess = r[0]; dati.rMed = r[1]; dati.rOtt = r[2]; }
     CAMPI.forEach(([k]) => { const el = form.elements[k]; if (el) el.value = dati[k] ?? ''; });
     $('#form-titolo-h').textContent = f ? 'Modifica: ' + f.nome : 'Nuovo titolo';
+    form.querySelectorAll('.da-verificare').forEach((el) => el.classList.remove('da-verificare'));
+    $('#foto-stato').hidden = true;
     aggiornaCostoTotale();
   }
   function leggiForm() {
@@ -286,7 +294,7 @@
     const d = leggiForm();
     $('#costo-totale').textContent = 'Costo annuo del prodotto: ' + pct(costoAnnuo(d)) + ' (gestione + transazione + performance), più ' + pct(d.ingresso) + ' di ingresso su ogni versamento.';
   }
-  form.addEventListener('input', aggiornaCostoTotale);
+  form.addEventListener('input', (e) => { e.target.classList.remove('da-verificare'); aggiornaCostoTotale(); });
   $('#btn-default-r').addEventListener('click', () => {
     const r = TIPI[form.elements.tipo.value].r;
     form.elements.rPess.value = r[0]; form.elements.rMed.value = r[1]; form.elements.rOtt.value = r[2];
@@ -297,6 +305,8 @@
     if (!d.nome) { toast('Inserisci un nome'); return; }
     if (inModifica) Object.assign(stato.titoli.find((t) => t.id === inModifica), d);
     else stato.titoli.push(Object.assign({ id: nuovoId(), visibile: true }, d));
+    const daVerificare = form.querySelectorAll('.da-verificare').length;
+    if (daVerificare && !confirm('Ci sono ' + daVerificare + ' valori letti dalla foto non ancora controllati (evidenziati in giallo). Salvare lo stesso?')) return;
     salva(); toast('Titolo salvato'); inModifica = null; disegnaTitoli();
   });
   $('#btn-annulla').addEventListener('click', () => { riempiForm(null); });
@@ -315,12 +325,120 @@
     }
   });
 
+  // ---------------- Lettura scheda da foto/PDF con Gemini ----------------
+  const GEMINI_KEY = 'simulatore.geminiKey', GEMINI_MODEL = 'simulatore.geminiModel', MODELLO_DEFAULT = 'gemini-flash-latest';
+  const MODELLI_RISERVA = ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-flash-lite-latest'];
+  const leggiLocale = (k) => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
+  const scriviLocale = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) { /* ignorato */ } };
+
+  // Riduce la foto (max 2000 px, JPEG) per inviarla più in fretta.
+  function preparaFile(file) {
+    return new Promise((res, rej) => {
+      const leggiB64 = (blob, mime) => { const r = new FileReader(); r.onload = () => res({ mime, data: String(r.result).split(',')[1] }); r.onerror = () => rej(new Error('file non leggibile')); r.readAsDataURL(blob); };
+      if (file.type === 'application/pdf') { if (file.size > 15e6) return rej(new Error('PDF troppo grande (max 15 MB)')); return leggiB64(file, 'application/pdf'); }
+      if (!file.type.startsWith('image/')) return rej(new Error('serve una foto o un PDF'));
+      const img = new Image(); const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const k = Math.min(1, 2000 / Math.max(img.width, img.height));
+        const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+        c.toBlob((b) => b ? leggiB64(b, 'image/jpeg') : rej(new Error('foto non convertibile')), 'image/jpeg', 0.88);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); leggiB64(file, file.type); }; // formato non decodificabile (es. HEIC): lo invio così com'è
+      img.src = url;
+    });
+  }
+
+  const SCHEMA_SCHEDA = {
+    type: 'OBJECT',
+    properties: {
+      nome: { type: 'STRING', nullable: true }, isin: { type: 'STRING', nullable: true },
+      tipo: { type: 'STRING', enum: Object.keys(TIPI), nullable: true }, sri: { type: 'INTEGER', nullable: true },
+      ingresso: { type: 'NUMBER', nullable: true }, fissoRata: { type: 'NUMBER', nullable: true },
+      correnti: { type: 'NUMBER', nullable: true }, transazione: { type: 'NUMBER', nullable: true },
+      performance: { type: 'NUMBER', nullable: true }, uscita: { type: 'NUMBER', nullable: true },
+      quotaStato: { type: 'NUMBER', nullable: true }, note: { type: 'STRING', nullable: true },
+    },
+  };
+  const ISTRUZIONI = `Sei un assistente che legge schede di fondi, ETF e titoli (KID, schede commerciali, factsheet, fogli della banca) in italiano o inglese.
+Estrai SOLO i valori scritti nel documento, senza inventare: se un valore non c'è, metti null.
+Percentuali come numeri (es. "2,46%" -> 2.46). Campi:
+- nome: nome del prodotto con la classe di quote; isin: codice ISIN;
+- tipo: una delle chiavi ${Object.entries(TIPI).map(([k, t]) => k + ' (' + t.nome + ')').join(', ')};
+- sri: indicatore sintetico di rischio 1-7;
+- ingresso: commissione/costo di ingresso massimo in % (se c'è solo un importo in euro su 10.000 €, convertilo in %);
+- fissoRata: spese fisse in euro per operazione o per rata PAC;
+- correnti: commissioni di gestione e altri costi amministrativi o di esercizio, % annuo (spese correnti / TER), SENZA i costi di transazione;
+- transazione: costi di transazione % annuo;
+- performance: commissioni di performance come impatto annuo % stimato (dal KID); se c'è solo l'aliquota tipo "20% dell'extra-rendimento" metti null e scrivilo nelle note;
+- uscita: costo di uscita in %;
+- quotaStato: % del portafoglio in titoli di Stato, solo se indicata;
+- note: in italiano, al massimo 3 frasi: cosa hai trovato, cosa manca, dubbi (es. valore massimo o stimato, data della scheda).`;
+
+  async function leggiScheda(file) {
+    const chiave = leggiLocale(GEMINI_KEY);
+    const box = $('#foto-stato');
+    const mostraStato = (html, errore) => { box.innerHTML = html; box.classList.toggle('errore', !!errore); box.hidden = false; };
+    if (!chiave) { mostraStato('Per leggere le foto serve la chiave Gemini: inseriscila in <a href="#impostazioni">Impostazioni</a>.', true); return; }
+    if (!navigator.onLine) { mostraStato('Serve la connessione a internet per leggere la foto.', true); return; }
+    mostraStato('⏳ Sto leggendo la scheda… (10-30 secondi)');
+    try {
+      const { mime, data } = await preparaFile(file);
+      const scelto = (leggiLocale(GEMINI_MODEL) || MODELLO_DEFAULT).replace(/^models\//, '');
+      // Se il modello è sovraccarico, provo da solo con altri modelli.
+      const modelli = [...new Set([scelto, ...MODELLI_RISERVA])];
+      let r = null, j = {};
+      for (const modello of modelli) {
+        try {
+          r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modello)}:generateContent`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': chiave },
+            body: JSON.stringify({
+              contents: [{ role: 'user', parts: [{ inline_data: { mime_type: mime, data } }, { text: ISTRUZIONI }] }],
+              generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: SCHEMA_SCHEDA },
+            }),
+          });
+          j = await r.json().catch(() => ({}));
+          if (r.ok || ![404, 429, 500, 503].includes(r.status)) break;
+        } catch (e) { r = null; } // errore di rete: provo il modello successivo
+        mostraStato('⏳ Il modello ' + esc(modello) + ' non risponde, provo con un altro…');
+      }
+      if (!r) throw new Error('connessione a Gemini non riuscita, controlla internet e riprova');
+      if (!r.ok) {
+        const msg = (j.error && j.error.message) || ('errore ' + r.status);
+        if (r.status === 503 || r.status === 500) throw new Error('i server di Gemini sono sovraccarichi in questo momento, riprova tra qualche minuto');
+        if (r.status === 429) throw new Error('quota gratuita di Gemini esaurita per ora, riprova più tardi');
+        if (r.status === 400 && /API key/i.test(msg)) throw new Error('chiave Gemini non valida');
+        throw new Error(msg);
+      }
+      const testo = (((j.candidates || [])[0] || {}).content || {}).parts?.map((p) => p.text || '').join('') || '';
+      const v = JSON.parse(testo);
+      const trovati = [];
+      ['nome', 'isin', 'tipo', 'sri', 'ingresso', 'fissoRata', 'correnti', 'transazione', 'performance', 'uscita', 'quotaStato'].forEach((k) => {
+        if (v[k] === null || v[k] === undefined || v[k] === '') return;
+        if (k === 'tipo' && !TIPI[v[k]]) return;
+        const el = form.elements[k]; el.value = v[k]; el.classList.add('da-verificare'); trovati.push(el.closest('label').firstChild.textContent.trim());
+      });
+      if (v.tipo && TIPI[v.tipo] && inModifica === null) { const rr = TIPI[v.tipo].r; form.elements.rPess.value = rr[0]; form.elements.rMed.value = rr[1]; form.elements.rOtt.value = rr[2]; }
+      if (v.note) form.elements.note.value = ('Da foto: ' + v.note + (form.elements.note.value ? '\n' + form.elements.note.value : '')).slice(0, 1000);
+      aggiornaCostoTotale();
+      mostraStato(trovati.length
+        ? `✅ Letti ${trovati.length} valori: <b>${esc(trovati.join(', '))}</b>. Sono evidenziati in giallo: <b>controllali con la scheda</b> prima di salvare. Capitale, versamento e rendimenti li scegli tu.` + (v.note ? `<br><small>${esc(v.note)}</small>` : '')
+        : 'Non ho trovato valori utili nella foto. Prova con una foto più nitida e dritta, o con il PDF del KID.', !trovati.length);
+    } catch (err) {
+      mostraStato('Lettura non riuscita: ' + esc(err.message), true);
+    }
+  }
+  ['#foto-camera', '#foto-file'].forEach((sel) => $(sel).addEventListener('change', (e) => {
+    const f = e.target.files[0]; e.target.value = ''; if (f) leggiScheda(f);
+  }));
+
   // ---------------- Impostazioni ----------------
   const CAMPI_IMP = ['anni', 'inflazione', 'aliquota', 'aliquotaStato', 'bollo'];
   function disegnaImpostazioni() {
     const s = stato.impostazioni;
     CAMPI_IMP.forEach((k) => { $('#set-' + k).value = s[k]; });
     $('#set-tema').value = s.tema; $('#set-auto').checked = !!s.autoBackup;
+    $('#set-gemini-key').value = leggiLocale(GEMINI_KEY); $('#set-gemini-model').value = leggiLocale(GEMINI_MODEL);
     aggiornaInfoBackup();
   }
   CAMPI_IMP.forEach((k) => $('#set-' + k).addEventListener('change', (e) => {
@@ -329,6 +447,8 @@
   }));
   $('#set-tema').addEventListener('change', (e) => { stato.impostazioni.tema = e.target.value; salva(); applicaTema(); });
   $('#set-auto').addEventListener('change', (e) => { stato.impostazioni.autoBackup = e.target.checked; salva(); });
+  $('#set-gemini-key').addEventListener('change', (e) => { scriviLocale(GEMINI_KEY, e.target.value.trim()); toast('Chiave Gemini salvata su questo dispositivo'); });
+  $('#set-gemini-model').addEventListener('change', (e) => { scriviLocale(GEMINI_MODEL, e.target.value.trim()); toast('Modello salvato'); });
   $('#btn-reset').addEventListener('click', () => {
     if (!confirm('Cancellare tutti i titoli e le impostazioni? (Il file di backup Excel non viene toccato)')) return;
     stato = { impostazioni: Object.assign({}, IMPOSTAZIONI_DEFAULT), titoli: esempi(), mostraTotale: true, mostraVersato: true };
