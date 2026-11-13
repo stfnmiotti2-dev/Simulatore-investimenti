@@ -305,7 +305,7 @@
     aggiornaRif();
     $('#form-titolo-h').textContent = f ? 'Modifica: ' + f.nome : 'Nuovo titolo';
     form.querySelectorAll('.da-verificare').forEach((el) => el.classList.remove('da-verificare'));
-    $('#foto-stato').hidden = true;
+    $('#foto-stato').hidden = true; $('#storico-box').hidden = true; ultimoStorico = null;
     aggiornaCostoTotale();
   }
   function leggiForm() {
@@ -387,6 +387,9 @@
       correnti: { type: 'NUMBER', nullable: true }, transazione: { type: 'NUMBER', nullable: true },
       performance: { type: 'NUMBER', nullable: true }, uscita: { type: 'NUMBER', nullable: true },
       quotaStato: { type: 'NUMBER', nullable: true }, note: { type: 'STRING', nullable: true },
+      rend1a: { type: 'NUMBER', nullable: true }, rend3a: { type: 'NUMBER', nullable: true }, rend5a: { type: 'NUMBER', nullable: true },
+      rend10a: { type: 'NUMBER', nullable: true }, rendLancio: { type: 'NUMBER', nullable: true }, dataLancio: { type: 'STRING', nullable: true },
+      scenarioModerato: { type: 'NUMBER', nullable: true }, dataDati: { type: 'STRING', nullable: true },
     },
   };
   const ISTRUZIONI = `Sei un assistente che legge schede di fondi, ETF e titoli (KID, schede commerciali, factsheet, fogli della banca) in italiano o inglese.
@@ -402,7 +405,37 @@ Percentuali come numeri (es. "2,46%" -> 2.46). Campi:
 - performance: commissioni di performance come impatto annuo % stimato (dal KID); se c'è solo l'aliquota tipo "20% dell'extra-rendimento" metti null e scrivilo nelle note;
 - uscita: costo di uscita in %;
 - quotaStato: % del portafoglio in titoli di Stato, solo se indicata;
+- rend1a, rend3a, rend5a, rend10a: rendimenti passati ANNUALIZZATI % del prodotto (non del benchmark) a 1, 3, 5, 10 anni, se la scheda li riporta (tipico dei factsheet); se ci sono solo i rendimenti anno per anno, calcola la media annua composta per i periodi coperti; altrimenti null;
+- rendLancio: rendimento annualizzato % dal lancio, se indicato; dataLancio: data di lancio; dataDati: data di riferimento dei rendimenti;
+- scenarioModerato: nel KID, rendimento medio annuo % dello scenario "moderato" al periodo di detenzione raccomandato;
 - note: in italiano, al massimo 3 frasi: cosa hai trovato, cosa manca, dubbi (es. valore massimo o stimato, data della scheda).`;
+
+  // Chiamata a Gemini con modelli di riserva se il primo è occupato. Restituisce la risposta JSON dell'API.
+  async function chiamaGemini(chiave, corpo, avviso, msg429) {
+    const scelto = (leggiLocale(GEMINI_MODEL) || MODELLO_DEFAULT).replace(/^models\//, '');
+    const modelli = [...new Set([scelto, ...MODELLI_RISERVA])];
+    let r = null, j = {};
+    for (const modello of modelli) {
+      try {
+        r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modello)}:generateContent`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': chiave }, body: JSON.stringify(corpo),
+        });
+        j = await r.json().catch(() => ({}));
+        if (r.ok || ![404, 429, 500, 503].includes(r.status)) break;
+      } catch (e) { r = null; } // errore di rete: provo il modello successivo
+      avviso('⏳ Il modello ' + esc(modello) + ' non risponde, provo con un altro…');
+    }
+    if (!r) throw new Error('connessione a Gemini non riuscita, controlla internet e riprova');
+    if (!r.ok) {
+      const msg = (j.error && j.error.message) || ('errore ' + r.status);
+      if (r.status === 503 || r.status === 500) throw new Error('i server di Gemini sono sovraccarichi in questo momento, riprova tra qualche minuto');
+      if (r.status === 429) throw new Error(msg429 || 'quota gratuita di Gemini esaurita per ora, riprova più tardi');
+      if (r.status === 400 && /API key/i.test(msg)) throw new Error('chiave Gemini non valida');
+      throw new Error(msg);
+    }
+    return j;
+  }
+  const testoRisposta = (j) => (((j.candidates || [])[0] || {}).content || {}).parts?.map((p) => p.text || '').join('') || '';
 
   async function leggiScheda(file) {
     const chiave = leggiLocale(GEMINI_KEY);
@@ -413,34 +446,11 @@ Percentuali come numeri (es. "2,46%" -> 2.46). Campi:
     mostraStato('⏳ Sto leggendo la scheda… (10-30 secondi)');
     try {
       const { mime, data } = await preparaFile(file);
-      const scelto = (leggiLocale(GEMINI_MODEL) || MODELLO_DEFAULT).replace(/^models\//, '');
-      // Se il modello è sovraccarico, provo da solo con altri modelli.
-      const modelli = [...new Set([scelto, ...MODELLI_RISERVA])];
-      let r = null, j = {};
-      for (const modello of modelli) {
-        try {
-          r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modello)}:generateContent`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': chiave },
-            body: JSON.stringify({
-              contents: [{ role: 'user', parts: [{ inline_data: { mime_type: mime, data } }, { text: ISTRUZIONI }] }],
-              generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: SCHEMA_SCHEDA },
-            }),
-          });
-          j = await r.json().catch(() => ({}));
-          if (r.ok || ![404, 429, 500, 503].includes(r.status)) break;
-        } catch (e) { r = null; } // errore di rete: provo il modello successivo
-        mostraStato('⏳ Il modello ' + esc(modello) + ' non risponde, provo con un altro…');
-      }
-      if (!r) throw new Error('connessione a Gemini non riuscita, controlla internet e riprova');
-      if (!r.ok) {
-        const msg = (j.error && j.error.message) || ('errore ' + r.status);
-        if (r.status === 503 || r.status === 500) throw new Error('i server di Gemini sono sovraccarichi in questo momento, riprova tra qualche minuto');
-        if (r.status === 429) throw new Error('quota gratuita di Gemini esaurita per ora, riprova più tardi');
-        if (r.status === 400 && /API key/i.test(msg)) throw new Error('chiave Gemini non valida');
-        throw new Error(msg);
-      }
-      const testo = (((j.candidates || [])[0] || {}).content || {}).parts?.map((p) => p.text || '').join('') || '';
-      const v = JSON.parse(testo);
+      const j = await chiamaGemini(chiave, {
+        contents: [{ role: 'user', parts: [{ inline_data: { mime_type: mime, data } }, { text: ISTRUZIONI }] }],
+        generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: SCHEMA_SCHEDA },
+      }, mostraStato);
+      const v = JSON.parse(testoRisposta(j));
       const trovati = [];
       ['nome', 'isin', 'tipo', 'sri', 'ingresso', 'fissoRata', 'correnti', 'transazione', 'performance', 'uscita', 'quotaStato'].forEach((k) => {
         if (v[k] === null || v[k] === undefined || v[k] === '') return;
@@ -450,6 +460,7 @@ Percentuali come numeri (es. "2,46%" -> 2.46). Campi:
       if (v.tipo && TIPI[v.tipo] && inModifica === null) { const rr = TIPI[v.tipo].r; form.elements.rPess.value = rr[0]; form.elements.rMed.value = rr[1]; form.elements.rOtt.value = rr[2]; }
       if (v.note) form.elements.note.value = ('Da foto: ' + v.note + (form.elements.note.value ? '\n' + form.elements.note.value : '')).slice(0, 1000);
       aggiornaCostoTotale();
+      if (['rend1a', 'rend3a', 'rend5a', 'rend10a', 'rendLancio', 'scenarioModerato'].some((k) => typeof v[k] === 'number')) mostraStorico(v, 'scheda fotografata');
       mostraStato(trovati.length
         ? `✅ Letti ${trovati.length} valori: <b>${esc(trovati.join(', '))}</b>. Sono evidenziati in giallo: <b>controllali con la scheda</b> prima di salvare. Capitale, versamento e rendimenti li scegli tu.` + (v.note ? `<br><small>${esc(v.note)}</small>` : '')
         : 'Non ho trovato valori utili nella foto. Prova con una foto più nitida e dritta, o con il PDF del KID.', !trovati.length);
@@ -457,6 +468,87 @@ Percentuali come numeri (es. "2,46%" -> 2.46). Campi:
       mostraStato('Lettura non riuscita: ' + esc(err.message), true);
     }
   }
+  // ---------------- Andamento storico -> proposta di rendimenti ----------------
+  // I rendimenti storici di un fondo/ETF sono già al netto dei suoi costi annui (gestione, transazione, performance):
+  // l'app lavora con il rendimento LORDO e toglie i costi da sola, quindi per proporre i rendimenti li riaggiungo.
+  let ultimoStorico = null;
+  function proponiRendimenti(d) {
+    const costi = costoAnnuo(leggiForm());
+    const periodi = [['rend10a', 10], ['rend5a', 5], ['rendLancio', 0], ['rend3a', 3]].filter(([k]) => typeof d[k] === 'number');
+    let base = null, baseNome = '';
+    if (periodi.length) { base = d[periodi[0][0]]; baseNome = { rend10a: '10 anni', rend5a: '5 anni', rendLancio: 'dal lancio', rend3a: '3 anni' }[periodi[0][0]]; }
+    else if (typeof d.scenarioModerato === 'number') { base = d.scenarioModerato; baseNome = 'scenario moderato del KID'; }
+    if (base === null) return null;
+    const lordi = ['rend3a', 'rend5a', 'rend10a', 'rendLancio'].filter((k) => typeof d[k] === 'number').map((k) => d[k] + costi);
+    const arrot = (x) => Math.round(x * 10) / 10;
+    let med = base + costi, pess, ott;
+    // Il pessimista non deve dipendere solo da anni buoni: prendo il più basso tra storico − 2, medio − 4 e il pessimista tipico del tipo.
+    const tipico = (TIPI[form.elements.tipo.value] || TIPI.altro).r;
+    pess = Math.min(lordi.length ? Math.min(...lordi) - 2 : med - 4, med - 4, tipico[0]);
+    ott = lordi.length >= 2 ? Math.max(...lordi) : med + 3;
+    const avvisi = [];
+    if (!d.rend10a) avvisi.push('Non c\'è uno storico di 10 anni: pochi anni possono riflettere un periodo particolarmente buono o cattivo.');
+    if (med > 10) { avvisi.push('Il medio storico supera il 10% lordo: è raro che duri per 20 anni, ho limitato la proposta al 10%.'); med = 10; }
+    pess = Math.max(-5, Math.min(pess, med - 1)); ott = Math.min(15, Math.max(ott, med + 1));
+    return { pess: arrot(pess), med: arrot(med), ott: arrot(ott), costi, baseNome, avvisi };
+  }
+  function mostraStorico(d, fonte) {
+    ultimoStorico = Object.assign({ fonte }, d);
+    const box = $('#storico-box'), p = proponiRendimenti(d);
+    const cell = (k) => typeof d[k] === 'number' ? pct(d[k]) : '–';
+    let html = `<b>Andamento storico</b> <small>(${esc(fonte)}${d.dataDati ? ', dati al ' + esc(d.dataDati) : ''})</small>
+      <table class="mini-tab"><tr><th>1 anno</th><th>3 anni</th><th>5 anni</th><th>10 anni</th><th>Dal lancio</th></tr>
+      <tr><td>${cell('rend1a')}</td><td>${cell('rend3a')}</td><td>${cell('rend5a')}</td><td>${cell('rend10a')}</td><td>${cell('rendLancio')}${d.dataLancio ? '<br><small>' + esc(d.dataLancio) + '</small>' : ''}</td></tr></table>
+      <small>Rendimenti medi annui passati, già al netto dei costi del prodotto.</small>`;
+    if (typeof d.scenarioModerato === 'number') html += `<br><small>Scenario moderato del KID: ${pct(d.scenarioModerato)} l'anno.</small>`;
+    if (p) {
+      html += `<p>Proposta (rendimento lordo = storico ${esc(p.baseNome)} + ${pct(p.costi)} di costi annui del prodotto):
+        <b>pessimista ${pct(p.pess)} · medio ${pct(p.med)} · ottimista ${pct(p.ott)}</b></p>`;
+      p.avvisi.forEach((a) => { html += `<p class="hint">⚠️ ${esc(a)}</p>`; });
+      html += `<button type="button" id="btn-applica-storico" class="primary">Usa questi rendimenti</button>`;
+    } else html += '<p class="hint">Non ci sono dati sufficienti per proporre dei rendimenti.</p>';
+    html += '<p class="hint">I rendimenti passati non garantiscono quelli futuri: usali come indicazione, non come previsione.</p>';
+    box.innerHTML = html; box.hidden = false; box.classList.remove('errore');
+    const b = $('#btn-applica-storico');
+    if (b) b.addEventListener('click', () => {
+      const q = proponiRendimenti(ultimoStorico); // ricalcolo con i costi attuali del modulo
+      [['rPess', q.pess], ['rMed', q.med], ['rOtt', q.ott]].forEach(([k, val]) => { form.elements[k].value = val; form.elements[k].classList.add('da-verificare'); });
+      const riass = `Storico (${ultimoStorico.fonte}${ultimoStorico.dataDati ? ', ' + ultimoStorico.dataDati : ''}): ` +
+        [['1a', 'rend1a'], ['3a', 'rend3a'], ['5a', 'rend5a'], ['10a', 'rend10a']].filter(([, k]) => typeof ultimoStorico[k] === 'number').map(([n, k]) => n + ' ' + pct(ultimoStorico[k])).join(', ');
+      form.elements.note.value = (riass + (form.elements.note.value ? '\n' + form.elements.note.value : '')).slice(0, 1000);
+      toast('Rendimenti inseriti: controllali e salva');
+    });
+  }
+
+  async function cercaStorico() {
+    const box = $('#storico-box');
+    const mostra = (html, errore) => { box.innerHTML = html; box.classList.toggle('errore', !!errore); box.hidden = false; };
+    const isin = form.elements.isin.value.trim(), nome = form.elements.nome.value.trim();
+    const link = isin ? `<br>Puoi guardare tu: <a href="https://www.justetf.com/it/etf-profile.html?isin=${encodeURIComponent(isin)}" target="_blank" rel="noopener">justETF</a> (ETF) ·
+      <a href="https://www.google.com/search?q=${encodeURIComponent(isin + ' rendimento annualizzato 5 anni')}" target="_blank" rel="noopener">cerca con Google</a>, oppure fotografa il factsheet: l'app legge anche i rendimenti passati.` : '';
+    if (!isin && !nome) { mostra('Inserisci prima l\'ISIN (meglio) o il nome del titolo.', true); return; }
+    const chiave = leggiLocale(GEMINI_KEY);
+    if (!chiave) { mostra('Per cercare su internet serve la chiave Gemini: inseriscila in <a href="#impostazioni">Impostazioni</a>.' + link, true); return; }
+    mostra('⏳ Cerco su internet l\'andamento storico… (20-60 secondi)');
+    const domanda = `Cerca sul web (siti come justETF, Morningstar, Borsa Italiana, sito dell'emittente) i rendimenti storici del prodotto ${isin ? 'con ISIN ' + isin : ''} ${nome ? '(' + nome + ')' : ''}, nella classe/valuta corrispondente all'ISIN.
+Rispondi SOLO con un oggetto JSON, senza altro testo, con queste chiavi:
+nome (string), rend1a, rend3a, rend5a, rend10a (rendimento ANNUALIZZATO % del prodotto, non del benchmark, numero o null), rendLancio (annualizzato % dal lancio o null), dataLancio (string o null), dataDati (string: data di riferimento dei dati), fonte (string: nome del sito), note (max 2 frasi in italiano).
+Usa solo numeri trovati nelle fonti; se non li trovi metti null. Non inventare.`;
+    try {
+      const j = await chiamaGemini(chiave, { contents: [{ role: 'user', parts: [{ text: domanda }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0 } },
+        (h) => mostra(h), 'la ricerca su internet di Gemini non è disponibile ora con la tua chiave (quota gratuita esaurita o ricerca non inclusa nel piano gratuito)');
+      const t = testoRisposta(j); const m = t.match(/\{[\s\S]*\}/);
+      if (!m) throw new Error('risposta non comprensibile');
+      const d = JSON.parse(m[0]);
+      ['rend1a', 'rend3a', 'rend5a', 'rend10a', 'rendLancio'].forEach((k) => { d[k] = typeof d[k] === 'number' ? d[k] : (d[k] != null && isFinite(num(d[k])) && String(d[k]).trim() !== '' ? num(d[k]) : null); });
+      if (!['rend1a', 'rend3a', 'rend5a', 'rend10a', 'rendLancio'].some((k) => typeof d[k] === 'number')) { mostra('Non ho trovato rendimenti storici affidabili per questo titolo.' + (d.note ? '<br><small>' + esc(d.note) + '</small>' : '') + link, true); return; }
+      mostraStorico(d, 'internet: ' + (d.fonte || 'ricerca Google'));
+      if (d.note) box.insertAdjacentHTML('beforeend', `<p class="hint">${esc(d.note)}</p>`);
+      box.insertAdjacentHTML('beforeend', `<p class="hint">Verifica i numeri sulla fonte.${link}</p>`);
+    } catch (err) { mostra('Ricerca non riuscita: ' + esc(err.message) + '.' + link, true); }
+  }
+  $('#btn-storico').addEventListener('click', cercaStorico);
+
   ['#foto-camera', '#foto-file'].forEach((sel) => $(sel).addEventListener('change', (e) => {
     const f = e.target.files[0]; e.target.value = ''; if (f) leggiScheda(f);
   }));

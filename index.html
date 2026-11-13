@@ -9,11 +9,11 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="style.css?v=2.1.1">
+<link rel="stylesheet" href="style.css?v=2.2.0">
 </head>
 <body>
 <header class="topbar">
-  <a href="#home" class="brand">📈 Simulatore <small class="ver">v2.1</small></a>
+  <a href="#home" class="brand">📈 Simulatore <small class="ver">v2.2</small></a>
   <nav>
     <a href="#home" data-page="home">Risultati</a>
     <a href="#titoli" data-page="titoli">Titoli</a>
@@ -114,7 +114,11 @@
           <label>Medio<input name="rMed" type="number" step="0.1"></label>
           <label>Ottimista<input name="rOtt" type="number" step="0.1"></label>
         </div>
-        <button type="button" id="btn-default-r">Usa valori indicativi del tipo</button>
+        <div class="row-wrap">
+          <button type="button" id="btn-default-r">Usa valori indicativi del tipo</button>
+          <button type="button" id="btn-storico">🔎 Cerca andamento storico</button>
+        </div>
+        <div id="storico-box" class="avviso" hidden></div>
         <p class="hint">Rendimento del mercato prima dei costi del prodotto. I costi li toglie l'app.</p>
       </fieldset>
       <label>Note<textarea name="note" rows="2"></textarea></label>
@@ -202,7 +206,7 @@
 
 <script src="lib/chart.umd.min.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
-<script src="calc.js?v=2.1.1"></script>
-<script src="app.js?v=2.1.1"></script>
+<script src="calc.js?v=2.2.0"></script>
+<script src="app.js?v=2.2.0"></script>
 </body>
 </html>

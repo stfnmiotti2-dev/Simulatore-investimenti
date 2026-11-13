@@ -126,3 +126,8 @@ input:disabled { opacity: .5; }
 .info-box p { padding-left: 0; }
 .info-box li { margin: 3px 0; }
 .info-box a { color: var(--accent); }
+
+.mini-tab { width: auto; margin: 6px 0; font-size: .85rem; }
+.mini-tab th, .mini-tab td { text-align: center !important; padding: 4px 10px; }
+#storico-box p { margin: 6px 0; }
+#storico-box a { color: var(--accent); }
