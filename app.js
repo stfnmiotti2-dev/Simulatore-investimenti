@@ -15,7 +15,7 @@
   // Campi del titolo: chiave interna, etichetta (usata anche come intestazione Excel), default.
   const CAMPI = [
     ['nome', 'Nome', ''], ['isin', 'ISIN', ''], ['tipo', 'Tipo', 'az_mondo'], ['sri', 'Rischio SRI', ''],
-    ['colore', 'Colore', '#2a78b8'], ['capitale', 'Capitale iniziale €', 0], ['pac', 'Versamento mensile €', 0],
+    ['colore', 'Colore', '#2a78b8'], ['sigla', 'Sigla', ''], ['capitale', 'Capitale iniziale €', 0], ['pac', 'Versamento mensile €', 0],
     ['quotaStato', 'Quota titoli di Stato %', 0], ['ingresso', 'Ingresso %', 0], ['fissoRata', 'Costo fisso per rata €', 0],
     ['correnti', 'Spese correnti %', 0], ['transazione', 'Transazione %', 0], ['performance', 'Performance %', 0],
     ['uscita', 'Uscita %', 0], ['rPess', 'Rend. pessimista %', 2], ['rMed', 'Rend. medio %', 6], ['rOtt', 'Rend. ottimista %', 9],
@@ -240,6 +240,16 @@
     $('#tab-risultati').innerHTML = html + '</tbody>';
   }
 
+  // Sigla breve di un titolo (per le colonne strette): quella scelta dall'utente, oppure le iniziali delle parole significative.
+  const PAROLE_VUOTE = new Set(['fund', 'found', 'fondo', 'eurizon', 'ucits', 'etf', 'sicav', 'classe', 'class', 'acc', 'dist', 'eur', 'the', 'di', 'del', 'e', 'and', 'r', 'esempio:']);
+  function sigla(f) {
+    if (f.sigla && String(f.sigla).trim()) return String(f.sigla).trim().slice(0, 8);
+    const parole = String(f.nome || '').replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter((w) => w && !PAROLE_VUOTE.has(w.toLowerCase()));
+    if (!parole.length) return String(f.nome || '?').slice(0, 6);
+    if (parole.length === 1) return parole[0].slice(0, 6).toUpperCase();
+    return parole.slice(0, 4).map((w) => /^\d+$/.test(w) ? w : w[0].toUpperCase()).join('');
+  }
+
   // ---------------- Pop-up: dove vanno i costi e le tasse ----------------
   function apriDettaglioCosti() {
     const s = stato.impostazioni;
@@ -247,55 +257,69 @@
     const dlg = $('#dlg-costi'), corpo = $('#dlg-costi-corpo');
     if (!attivi.length) { corpo.innerHTML = '<p>Nessun titolo acceso: accendine uno dalla lista "Mostra nel grafico".</p>'; dlg.showModal(); return; }
     const fine = (x) => x.r.med[x.r.med.length - 1];
-    const colonne = attivi.map((x) => ({ nome: x.f.nome, colore: x.f.colore, p: fine(x), costoDeiCosti: x.r.costoDeiCosti }));
-    const somma = (fn) => colonne.reduce((a, c) => a + fn(c), 0);
-    const multi = colonne.length > 1;
-    const PRODOTTO = ['ingresso', 'fisso', 'gestione', 'transazione', 'performance', 'uscita'];
-    const pagatiProdotto = (c) => PRODOTTO.reduce((a, k) => a + c.p.voci[k], 0);
-    const GRUPPI = [
-      { chi: '🏦 Banca o chi ti vende il prodotto', voci: [
-        ['ingresso', 'Commissione di ingresso', 'Trattenuta su ogni versamento, prima di investirlo.'],
-        ['fisso', 'Costi fissi per operazione/rata', 'Diritti fissi per ogni acquisto o rata del PAC (per un ETF: la commissione di acquisto del conto titoli).'],
-      ] },
-      { chi: '🏢 Società che gestisce il fondo', voci: [
-        ['gestione', 'Spese di gestione (spese correnti/TER)', 'Prelevate ogni giorno dal valore del fondo. Una parte spesso torna alla banca che te l\'ha venduto ("retrocessione").'],
-        ['performance', 'Commissioni di performance', 'Pagate al gestore negli anni in cui batte il suo obiettivo.'],
-      ] },
-      { chi: '📈 Mercato (intermediari di borsa)', voci: [
-        ['transazione', 'Costi di transazione', 'Il fondo compra e vende azioni e obbligazioni: commissioni e differenze di prezzo pagate a broker e mercati.'],
-      ] },
-      { chi: '🚪 Al ritiro', voci: [
-        ['uscita', 'Commissione di uscita', 'Trattenuta quando vendi, se prevista.'],
-      ] },
-    ];
-    const th = multi ? colonne.map((c) => `<th><span class="dot" style="display:inline-block;vertical-align:-2px;background:${esc(c.colore)}"></span> ${esc(c.nome)}</th>`).join('') : '';
-    const riga = (titolo, spieg, fn, cls) => `<tr class="${cls || ''}"><td>${titolo}${spieg ? `<br><small>${spieg}</small>` : ''}</td><td><b>${euro(somma(fn))}</b></td>${multi ? colonne.map((c) => `<td>${euro(fn(c))}</td>`).join('') : ''}</tr>`;
-    let t = `<div class="table-wrap"><table class="tab-costi"><thead><tr><th>Dove vanno i soldi</th><th>Totale</th>${th}</tr></thead><tbody>`;
-    GRUPPI.forEach((g) => {
-      const voci = g.voci.filter(([k]) => somma((c) => c.p.voci[k]) > 0.5);
-      if (!voci.length) return;
-      t += `<tr class="gruppo-costi"><td colspan="${2 + (multi ? colonne.length : 0)}">${g.chi}</td></tr>`;
-      voci.forEach(([k, nome, spieg]) => { t += riga(nome, esc(spieg), (c) => c.p.voci[k]); });
+    const col = attivi.map((x) => {
+      const p = fine(x), z = x.r.senzaCosti[x.r.senzaCosti.length - 1]; // stesso titolo senza costi del prodotto
+      // costo dei costi = costi pagati + crescita persa − tasse risparmiate (con meno guadagno si pagano meno tasse)
+      const pag = ['ingresso', 'fisso', 'gestione', 'transazione', 'performance', 'uscita'].reduce((a, k) => a + p.voci[k], 0);
+      const dLordo = z.valore - (p.valore - p.voci.uscita);
+      return { f: x.f, sigla: sigla(x.f), p, cdc: x.r.costoDeiCosti, persa: dLordo - pag, risp: z.tasse - p.tasse };
     });
-    t += riga('<b>Costi del prodotto pagati</b>', '', pagatiProdotto, 'subtot');
-    t += riga('Crescita persa', 'I soldi pagati in costi non sono più rimasti investiti, quindi non hanno fruttato (già al netto di bollo e tasse più bassi).', (c) => c.costoDeiCosti - pagatiProdotto(c));
-    t += riga('<b>= Costo dei costi</b>', 'Quanto avresti in più alla fine con un prodotto senza costi.', (c) => c.costoDeiCosti, 'subtot');
-    t += `<tr class="gruppo-costi"><td colspan="${2 + (multi ? colonne.length : 0)}">🏛️ Stato</td></tr>`;
-    t += riga('Imposta di bollo', `${pct(num(s.bollo))} l'anno sul valore dell'investimento.`, (c) => c.p.voci.bollo);
-    t += riga('Tasse sul guadagno, al ritiro', `${pct(num(s.aliquota))} sul guadagno (${pct(num(s.aliquotaStato))} sulla parte in titoli di Stato), pagate solo quando vendi.`, (c) => c.p.voci.tasse);
-    t += riga('<b>Totale allo Stato</b>', '', (c) => c.p.voci.bollo + c.p.voci.tasse, 'subtot');
-    t += '</tbody></table></div>';
-    // Riepilogo: dove finiscono i soldi a fine periodo
-    const ver = somma((c) => c.p.versato), nettoTe = somma((c) => c.p.netto), costi = somma(pagatiProdotto), statoTot = somma((c) => c.p.voci.bollo + c.p.voci.tasse);
-    const guad = nettoTe - ver;
-    const tot = Math.max(1, nettoTe + costi + statoTot);
-    const barra = [[nettoTe, 'var(--accent)', 'A te (netto)'], [costi, '#e07b39', 'Costi del prodotto'], [statoTot, '#8c6d4f', 'Stato']]
-      .map(([x, col, et]) => `<span style="width:${Math.max(0, x / tot * 100)}%;background:${col}" title="${et}: ${euro(x)}"></span>`).join('');
-    corpo.innerHTML = `<p class="riass">In <b>${s.anni} anni</b> versi <b>${euro(ver)}</b>. Nello scenario medio, alla vendita: <b>${euro(nettoTe)}</b> restano a te
-      (guadagno netto ${euro(guad)}), <b>${euro(costi)}</b> sono andati in costi del prodotto e <b>${euro(statoTot)}</b> allo Stato.</p>
-      <div class="barra-costi">${barra}</div>
-      <div class="legenda-costi"><span><i style="background:var(--accent)"></i>A te ${euro(nettoTe)}</span><span><i style="background:#e07b39"></i>Costi ${euro(costi)}</span><span><i style="background:#8c6d4f"></i>Stato ${euro(statoTot)}</span></div>
-      ${t}<p class="hint">Scenario medio, euro nominali, titoli reali accesi (i riferimenti sono esclusi). Le tasse si pagano solo se vendi alla fine del periodo.</p>`;
+    const tot = (fn) => col.reduce((a, c) => a + fn(c), 0);
+    const PRODOTTO = ['ingresso', 'fisso', 'gestione', 'transazione', 'performance', 'uscita'];
+    const pagati = (c) => PRODOTTO.reduce((a, k) => a + c.p.voci[k], 0);
+    const allo = (c) => c.p.voci.bollo + c.p.voci.tasse;
+    const e0 = (x) => Math.abs(x) < 0.5 ? '–' : euro(x);
+    const dot = (c) => `<span class="dot" style="display:inline-block;vertical-align:-2px;background:${esc(c.f.colore)}"></span>`;
+
+    // Riquadri: partono dallo stesso numero del riquadro della pagina principale
+    const cdc = tot((c) => c.cdc), pag = tot(pagati), persa = tot((c) => c.persa), risp = tot((c) => c.risp), statoT = tot(allo), ver = tot((c) => c.p.versato), aTe = tot((c) => c.p.netto);
+    let h = `<div class="eq">
+      <div class="eq-box forte"><div class="k">Costo dei costi</div><div class="v">${euro(cdc)}</div><div class="s">il numero del riquadro</div></div>
+      <div class="eq-op">=</div>
+      <div class="eq-box"><div class="k">Costi pagati</div><div class="v">${euro(pag)}</div><div class="s">soldi trattenuti dal prodotto</div></div>
+      <div class="eq-op">+</div>
+      <div class="eq-box"><div class="k">Crescita persa</div><div class="v">${euro(persa)}</div><div class="s">quanto avrebbero fruttato</div></div>
+      <div class="eq-op">−</div>
+      <div class="eq-box"><div class="k">Tasse risparmiate</div><div class="v">${euro(risp)}</div><div class="s">meno guadagno, meno tasse</div></div>
+    </div>
+    <p class="riass">A parte, <b>${euro(statoT)}</b> vanno <b>allo Stato</b> (bollo e tasse al ritiro): non sono costi del prodotto, li pagheresti con qualsiasi investimento.
+      In ${s.anni} anni versi ${euro(ver)}; alla vendita restano a te <b>${euro(aTe)}</b>.</p>`;
+
+    // Tabella a griglia: voci in riga, titoli in colonna con colore e sigla, totale in fondo
+    const RIGHE = [
+      ['ingresso', 'Ingresso', 'Banca'], ['fisso', 'Costi fissi rata', 'Banca'],
+      ['gestione', 'Gestione (TER)', 'Gestore *'], ['performance', 'Performance', 'Gestore'],
+      ['transazione', 'Transazione', 'Mercato'], ['uscita', 'Uscita', 'Banca/gestore'],
+    ].filter(([k]) => tot((c) => c.p.voci[k]) >= 0.5);
+    const intest = col.map((c) => `<th title="${esc(c.f.nome)}">${dot(c)} ${esc(c.sigla)}</th>`).join('');
+    const riga = (voce, chi, fn, cls) => `<tr class="${cls || ''}"><td>${voce}</td><td class="chi">${chi}</td>${col.map((c) => `<td>${e0(fn(c))}</td>`).join('')}<td class="tot">${e0(tot(fn))}</td></tr>`;
+    h += `<div class="table-wrap"><table class="griglia"><thead><tr><th>Voce</th><th>A chi va</th>${intest}<th class="tot">Totale</th></tr></thead><tbody>`;
+    RIGHE.forEach(([k, voce, chi]) => { h += riga(voce, chi, (c) => c.p.voci[k]); });
+    h += riga('Costi pagati', '', pagati, 'sub');
+    h += riga('+ Crescita persa', '', (c) => c.persa);
+    h += riga('− Tasse risparmiate', '', (c) => c.risp);
+    h += riga('= Costo dei costi', '', (c) => c.cdc, 'sub forte');
+    h += riga('Bollo', 'Stato', (c) => c.p.voci.bollo);
+    h += riga('Tasse al ritiro', 'Stato', (c) => c.p.voci.tasse);
+    h += riga('Totale Stato', '', allo, 'sub');
+    h += riga('A te alla fine', '', (c) => c.p.netto, 'sub forte');
+    h += '</tbody></table></div>';
+
+    // Legenda sigle e spiegazioni brevi
+    h += `<div class="legenda-sigle">${col.map((c) => `<span>${dot(c)} <b>${esc(c.sigla)}</b> = ${esc(c.f.nome)}</span>`).join('')}</div>
+    <details class="spiega"><summary>Cosa vuol dire ogni voce</summary><ul>
+      <li><b>Ingresso</b>: % trattenuta su ogni versamento, prima di investirlo. Va alla banca che ti vende il prodotto.</li>
+      <li><b>Costi fissi rata</b>: euro fissi per ogni acquisto o rata del PAC (per un ETF, la commissione del conto titoli).</li>
+      <li><b>Gestione (TER)</b>: prelevata ogni giorno dal valore del fondo dalla società di gestione. * Una parte spesso torna alla banca come "retrocessione".</li>
+      <li><b>Performance</b>: pagata al gestore negli anni in cui batte il suo obiettivo.</li>
+      <li><b>Transazione</b>: commissioni e differenze di prezzo quando il fondo compra e vende titoli.</li>
+      <li><b>Crescita persa</b>: i soldi pagati in costi non sono rimasti investiti e non hanno fruttato.</li>
+      <li><b>Tasse risparmiate</b>: con i costi il guadagno è più basso, quindi alla vendita paghi un po' meno tasse. Questo riduce un po' il danno dei costi, ma non lo compensa mai.</li>
+      <li><b>Costo dei costi</b>: quanto avresti in più alla fine, già tolte le tasse, con un prodotto senza costi. È il numero del riquadro nella pagina principale.</li>
+      <li><b>Bollo</b>: ${pct(num(s.bollo))} l'anno sul valore. <b>Tasse al ritiro</b>: ${pct(num(s.aliquota))} sul guadagno (${pct(num(s.aliquotaStato))} sulla parte in titoli di Stato), solo quando vendi.</li>
+    </ul></details>
+    <p class="hint">Scenario medio, euro nominali, dopo ${s.anni} anni, solo titoli reali accesi.</p>`;
+    corpo.innerHTML = h;
     dlg.showModal();
   }
   $('#tiles').addEventListener('click', (e) => { if (e.target.closest('#tile-costi')) apriDettaglioCosti(); });

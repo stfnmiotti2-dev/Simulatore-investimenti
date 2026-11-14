@@ -151,3 +151,20 @@ dialog#dlg-costi::backdrop { background: rgba(0,0,0,.45); }
 .tab-costi td small { color: var(--muted); font-size: .78rem; }
 .tab-costi tr.gruppo-costi td { font-weight: 700; padding-top: 14px; border-bottom: 1px solid var(--line); }
 .tab-costi tr.subtot td { background: var(--bg); }
+
+.eq { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.eq-box { flex: 1 1 150px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+.eq-box.forte { border-color: #e07b39; }
+.eq-box .k { color: var(--muted); font-size: .8rem; } .eq-box .v { font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; } .eq-box .s { color: var(--muted); font-size: .75rem; }
+.eq-op { align-self: center; font-size: 1.4rem; font-weight: 700; color: var(--muted); }
+table.griglia { border-collapse: collapse; width: 100%; font-size: .9rem; }
+table.griglia th, table.griglia td { border: 1px solid var(--line); padding: 6px 10px; text-align: right; white-space: nowrap; }
+table.griglia th:first-child, table.griglia td:first-child, table.griglia td.chi, table.griglia th:nth-child(2) { text-align: left; }
+table.griglia td.chi { color: var(--muted); font-size: .82rem; }
+table.griglia th { background: var(--bg); }
+table.griglia .tot { font-weight: 700; }
+table.griglia tr.sub td { background: var(--bg); font-weight: 600; }
+table.griglia tr.forte td { font-weight: 700; }
+.legenda-sigle { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: .82rem; margin: 8px 0; }
+details.spiega { font-size: .85rem; margin: 6px 0; } details.spiega summary { cursor: pointer; color: var(--accent); }
+details.spiega ul { margin: 6px 0; padding-left: 20px; } details.spiega li { margin: 3px 0; }
