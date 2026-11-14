@@ -114,8 +114,11 @@
     const n = lista[0].r[scen].length;
     const out = [];
     for (let i = 0; i < n; i++) {
-      const p = { anno: i, versato: 0, valore: 0, netto: 0, tasse: 0 };
-      lista.forEach(({ r }) => { const q = r[scen][i]; p.versato += q.versato; p.valore += q.valore; p.netto += q.netto; p.tasse += q.tasse; });
+      const p = { anno: i, versato: 0, valore: 0, netto: 0, tasse: 0, voci: {} };
+      lista.forEach(({ r }) => {
+        const q = r[scen][i]; p.versato += q.versato; p.valore += q.valore; p.netto += q.netto; p.tasse += q.tasse;
+        Object.entries(q.voci || {}).forEach(([k, x]) => { p.voci[k] = (p.voci[k] || 0) + x; });
+      });
       out.push(p);
     }
     return out;
@@ -124,6 +127,19 @@
   function alpha(hex, a) {
     const h = hex.replace('#', ''); const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
     return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+  }
+
+  // Scenario medio a fine periodo: confronto con lo stesso titolo senza costi del prodotto (stesso mercato, bollo e tasse).
+  function riepilogo(lista) {
+    const R = { versato: 0, senzaCosti: 0, costi: 0, ritiro: 0, tasse: 0, inTasca: 0, bollo: 0, perTitolo: [] };
+    lista.forEach((x) => {
+      const p = x.r.med[x.r.med.length - 1], z = x.r.senzaCosti[x.r.senzaCosti.length - 1];
+      const ritiro = p.valore - p.voci.uscita;
+      const t = { f: x.f, p, versato: p.versato, senzaCosti: z.valore, ritiro, costi: z.valore - ritiro, tasse: p.tasse, inTasca: p.netto, bollo: p.voci.bollo };
+      ['versato', 'senzaCosti', 'costi', 'ritiro', 'tasse', 'inTasca', 'bollo'].forEach((k) => { R[k] += t[k]; });
+      R.perTitolo.push(t);
+    });
+    return R;
   }
 
   function disegnaHome() {
@@ -140,20 +156,27 @@
     const rifAccesi = tutti.filter((x) => x.f.visibile !== false && isRif(x.f));
     const tot = { pess: sommaSerie(attivi, 'pess'), med: sommaSerie(attivi, 'med'), ott: sommaSerie(attivi, 'ott') };
 
-    // Riquadri riassuntivi (sui titoli accesi)
+    // Riquadri a catena: versato -> senza costi sarebbe -> - costi -> valore al ritiro -> - tasse -> in tasca
     const capTot = attivi.reduce((a, x) => a + num(x.f.capitale), 0);
     const pacTot = attivi.reduce((a, x) => a + num(x.f.pac), 0);
+    const R = riepilogo(attivi);
+    const def = s.realeOggi ? Math.pow(1 + num(s.inflazione) / 100, num(s.anni)) : 1; // "in euro di oggi"
+    const e = (x) => euro(x / def);
     const ult = (arr) => arr[arr.length - 1];
-    const fineMed = tot.med.length ? ult(tot.med) : null;
-    const costiTot = attivi.reduce((a, x) => a + x.r.costoDeiCosti, 0);
-    const v = (p) => p ? mostra(p, s) : null;
-    $('#tiles').innerHTML = [
-      ['Capitale iniziale', euro(capTot), attivi.length + (attivi.length === 1 ? ' titolo acceso' : ' titoli accesi') + (rifAccesi.length ? ' + ' + rifAccesi.length + ' rif.' : '')],
-      ['Versamento mensile', euro(pacTot), euro(pacTot * 12) + ' l\'anno'],
-      ['Versato in ' + s.anni + ' anni', euro(fineMed ? fineMed.versato : 0), 'soldi tuoi'],
-      ['Valore finale (medio)', euro(v(fineMed)), 'da ' + euro(v(tot.pess.length ? ult(tot.pess) : null)) + ' a ' + euro(v(tot.ott.length ? ult(tot.ott) : null))],
-      ['Costo dei costi', euro(costiTot), 'ⓘ tocca per vedere dove vanno', 'tile-costi'],
-    ].map(([k, val, sub, id]) => `<div class="tile${id ? ' cliccabile' : ''}"${id ? ` id="${id}" role="button" tabindex="0"` : ''}><div class="k">${k}</div><div class="v">${val}</div><div class="s">${sub}</div></div>`).join('');
+    const fine = (sc) => tot[sc].length ? ult(tot[sc]) : null;
+    const rit = (p) => p ? (p.valore - p.voci.uscita) / def : null;
+    const freccia = '<div class="t-op">→</div>';
+    const tile = (k, val, sub, cls, id) => `<div class="tile ${cls || ''}"${id ? ` id="${id}" role="button" tabindex="0"` : ''}><div class="k">${k}</div><div class="v">${val}</div><div class="s">${sub}</div></div>`;
+    $('#tiles').innerHTML = attivi.length ? [
+      tile('Versato in ' + s.anni + ' anni', euro(R.versato), euro(capTot) + ' iniziali + ' + euro(pacTot) + '/mese'),
+      tile('Senza costi sarebbero', e(R.senzaCosti), 'prima delle tasse'),
+      tile('− Costi', e(R.costi), 'ⓘ tocca per il dettaglio', 'cliccabile costi', 'tile-costi'),
+      tile('= Valore al ritiro', e(R.ritiro), 'prima delle tasse · da ' + euro(rit(fine('pess'))) + ' a ' + euro(rit(fine('ott')))),
+      tile('− Tasse al ritiro', e(R.tasse), pct(num(s.aliquota)) + ' sul guadagno (bollo già pagato: ' + e(R.bollo) + ')', 'tasse'),
+      tile('= In tasca', e(R.inTasca), 'guadagno netto ' + euro(R.inTasca / def - R.versato) , 'forte'),
+    ].join('') : '<div class="tile"><div class="k">Nessun titolo acceso</div><div class="s">Accendine uno dalla lista "Mostra nel grafico".</div></div>';
+    $('#tiles').classList.toggle('catena', !!attivi.length);
+    if (s.realeOggi) $('#tiles').insertAdjacentHTML('beforeend', '<p class="hint tiles-nota">Valori in euro di oggi (inflazione ' + pct(num(s.inflazione)) + '); il versato è in euro nominali.</p>');
 
     // Lista delle linee a sinistra
     const li = [];
@@ -229,13 +252,14 @@
         <td>${euro(ver)}</td><td>${euro(mostra(pp, s))}</td><td><b>${euro(val)}</b></td><td>${euro(mostra(po, s))}</td>
         <td class="${guad < 0 ? 'neg' : ''}">${euro(guad)}</td><td>${euro(mostra(pm, s, 'tasse'))}</td><td>${euro(costi)}</td><td>${pct(rend)}</td></tr>`;
     };
-    let html = `<thead><tr><th>Titolo</th><th>Versato</th><th>Pessimista</th><th>Medio</th><th>Ottimista</th><th>Guadagno (medio)</th><th>Tasse (medio)</th><th>Costo dei costi</th><th>Rend. netto annuo</th></tr></thead><tbody>`;
+    let html = `<thead><tr><th>Titolo</th><th>Versato</th><th>Pessimista</th><th>Medio</th><th>Ottimista</th><th>Guadagno (medio)</th><th>Tasse (medio)</th><th>Costi</th><th>Rend. netto annuo</th></tr></thead><tbody>`;
     if (!attivi.length) html += `<tr><td colspan="9">Nessun titolo acceso. Accendine uno dalla lista o aggiungilo dalla pagina Titoli.</td></tr>`;
-    attivi.forEach(({ f, r }) => { html += riga(f.nome, f.colore, r, r.costoDeiCosti, r.rendEffettivo); });
-    if (attivi.length > 1) html += riga('Totale', null, tot, attivi.reduce((a, x) => a + x.r.costoDeiCosti, 0), null, 'totale');
+    const cst = (x) => riepilogo([x]).costi;
+    attivi.forEach((x) => { html += riga(x.f.nome, x.f.colore, x.r, cst(x), x.r.rendEffettivo); });
+    if (attivi.length > 1) html += riga('Totale', null, tot, riepilogo(attivi).costi, null, 'totale');
     if (rifAccesi.length) {
       html += `<tr class="gruppo"><td colspan="9">Riferimenti: stessi soldi del totale, ma solo per confronto</td></tr>`;
-      rifAccesi.forEach(({ f, r }) => { html += riga(f.nome, f.colore, r, r.costoDeiCosti, r.rendEffettivo, 'rif'); });
+      rifAccesi.forEach((x) => { html += riga(x.f.nome, x.f.colore, x.r, cst(x), x.r.rendEffettivo, 'rif'); });
     }
     $('#tab-risultati').innerHTML = html + '</tbody>';
   }
@@ -250,113 +274,36 @@
     return parole.slice(0, 4).map((w) => /^\d+$/.test(w) ? w : w[0].toUpperCase()).join('');
   }
 
-  // ---------------- Pop-up: dove vanno i costi e le tasse ----------------
+  // ---------------- Pop-up: dettaglio dei costi (semplice) ----------------
   function apriDettaglioCosti() {
     const s = stato.impostazioni;
     const attivi = calcoli().filter((x) => x.f.visibile !== false && !isRif(x.f));
     const dlg = $('#dlg-costi'), corpo = $('#dlg-costi-corpo');
-    if (!attivi.length) { corpo.innerHTML = '<p>Nessun titolo acceso: accendine uno dalla lista "Mostra nel grafico".</p>'; dlg.showModal(); return; }
-    const fine = (x) => x.r.med[x.r.med.length - 1];
-    const col = attivi.map((x) => {
-      const p = fine(x), z = x.r.senzaCosti[x.r.senzaCosti.length - 1]; // stesso titolo senza costi del prodotto
-      // costo dei costi = costi pagati + crescita persa − tasse risparmiate (con meno guadagno si pagano meno tasse)
-      const pag = ['ingresso', 'fisso', 'gestione', 'transazione', 'performance', 'uscita'].reduce((a, k) => a + p.voci[k], 0);
-      const dLordo = z.valore - (p.valore - p.voci.uscita);
-      return { f: x.f, sigla: sigla(x.f), p, cdc: x.r.costoDeiCosti, persa: dLordo - pag, risp: z.tasse - p.tasse };
-    });
-    const tot = (fn) => col.reduce((a, c) => a + fn(c), 0);
-    const PRODOTTO = ['ingresso', 'fisso', 'gestione', 'transazione', 'performance', 'uscita'];
-    const pagati = (c) => PRODOTTO.reduce((a, k) => a + c.p.voci[k], 0);
-    const allo = (c) => c.p.voci.bollo + c.p.voci.tasse;
+    if (!attivi.length) { corpo.innerHTML = '<p>Nessun titolo acceso.</p>'; dlg.showModal(); return; }
+    const R = riepilogo(attivi), col = R.perTitolo;
     const e0 = (x) => Math.abs(x) < 0.5 ? '–' : euro(x);
     const dot = (c) => `<span class="dot" style="display:inline-block;vertical-align:-2px;background:${esc(c.f.colore)}"></span>`;
-
-    // Riquadri: partono dallo stesso numero del riquadro della pagina principale
-    const cdc = tot((c) => c.cdc), pag = tot(pagati), persa = tot((c) => c.persa), risp = tot((c) => c.risp), statoT = tot(allo), ver = tot((c) => c.p.versato), aTe = tot((c) => c.p.netto);
-    const box = (k, tit, val, sub, cls) => `<div class="eq-box ${cls || ''}" data-k="${k}" role="button" tabindex="0" aria-expanded="false"><div class="k">${tit} <span class="i">ⓘ</span></div><div class="v">${val}</div><div class="s">${sub}</div></div>`;
-    let h = `<div class="eq">
-      ${box('cdc', 'Costo dei costi', euro(cdc), 'il numero del riquadro', 'forte')}
-      <div class="eq-op">=</div>
-      ${box('pag', 'Costi pagati', euro(pag), 'soldi trattenuti dal prodotto')}
-      <div class="eq-op">+</div>
-      ${box('persa', 'Crescita persa', euro(persa), 'quanto avrebbero fruttato')}
-      <div class="eq-op">−</div>
-      ${box('risp', 'Tasse risparmiate', euro(risp), 'meno guadagno, meno tasse')}
-    </div>
-    <p class="hint eq-hint">Tocca un riquadro per la spiegazione.</p>
-    <div id="eq-info" class="eq-info" hidden></div>
-    <p class="riass">A parte, <b>${euro(statoT)}</b> vanno <b>allo Stato</b> (bollo e tasse al ritiro): non sono costi del prodotto, li pagheresti con qualsiasi investimento.
-      In ${s.anni} anni versi ${euro(ver)}; alla vendita restano a te <b>${euro(aTe)}</b>.</p>`;
-
-    // Tabella a griglia: voci in riga, titoli in colonna con colore e sigla, totale in fondo
+    const somma = (fn) => col.reduce((a, c) => a + fn(c), 0);
+    const PAG = ['ingresso', 'fisso', 'gestione', 'transazione', 'performance', 'uscita'];
+    const pagati = (c) => PAG.reduce((a, k) => a + c.p.voci[k], 0);
     const RIGHE = [
-      ['ingresso', 'Ingresso', 'Banca'], ['fisso', 'Costi fissi rata', 'Banca'],
-      ['gestione', 'Gestione (TER)', 'Gestore *'], ['performance', 'Performance', 'Gestore'],
-      ['transazione', 'Transazione', 'Mercato'], ['uscita', 'Uscita', 'Banca/gestore'],
-    ].filter(([k]) => tot((c) => c.p.voci[k]) >= 0.5);
-    const intest = col.map((c) => `<th title="${esc(c.f.nome)}">${dot(c)} ${esc(c.sigla)}</th>`).join('');
-    const riga = (voce, chi, fn, cls) => `<tr class="${cls || ''}"><td>${voce}</td><td class="chi">${chi}</td>${col.map((c) => `<td>${e0(fn(c))}</td>`).join('')}<td class="tot">${e0(tot(fn))}</td></tr>`;
-    h += `<div class="table-wrap"><table class="griglia"><thead><tr><th>Voce</th><th>A chi va</th>${intest}<th class="tot">Totale</th></tr></thead><tbody>`;
+      ['ingresso', 'Ingresso', 'Banca'], ['fisso', 'Costi fissi per rata', 'Banca'],
+      ['gestione', 'Gestione (TER)', 'Società del fondo'], ['performance', 'Performance', 'Società del fondo'],
+      ['transazione', 'Compravendite nel fondo', 'Mercato'], ['uscita', 'Uscita', 'Banca'],
+    ].filter(([k]) => somma((c) => c.p.voci[k]) >= 0.5);
+    const riga = (voce, chi, fn, cls) => `<tr class="${cls || ''}"><td>${voce}</td><td class="chi">${chi}</td>${col.map((c) => `<td>${e0(fn(c))}</td>`).join('')}<td class="tot">${e0(somma(fn))}</td></tr>`;
+    let h = `<p class="riass">Senza costi i tuoi soldi sarebbero <b>${euro(R.senzaCosti)}</b>. Con i costi sono <b>${euro(R.ritiro)}</b>: i costi ti tolgono <b>${euro(R.costi)}</b>. Ecco dove vanno.</p>
+      <div class="table-wrap"><table class="griglia"><thead><tr><th>Costo</th><th>A chi va</th>${col.map((c) => `<th title="${esc(c.f.nome)}">${dot(c)} ${esc(sigla(c.f))}</th>`).join('')}<th class="tot">Totale</th></tr></thead><tbody>`;
     RIGHE.forEach(([k, voce, chi]) => { h += riga(voce, chi, (c) => c.p.voci[k]); });
-    h += riga('Costi pagati', '', pagati, 'sub');
-    h += riga('+ Crescita persa', '', (c) => c.persa);
-    h += riga('− Tasse risparmiate', '', (c) => c.risp);
-    h += riga('= Costo dei costi', '', (c) => c.cdc, 'sub forte');
-    h += riga('Bollo', 'Stato', (c) => c.p.voci.bollo);
-    h += riga('Tasse al ritiro', 'Stato', (c) => c.p.voci.tasse);
-    h += riga('Totale Stato', '', allo, 'sub');
-    h += riga('A te alla fine', '', (c) => c.p.netto, 'sub forte');
-    h += '</tbody></table></div>';
-
-    // Legenda sigle e spiegazioni brevi
-    h += `<div class="legenda-sigle">${col.map((c) => `<span>${dot(c)} <b>${esc(c.sigla)}</b> = ${esc(c.f.nome)}</span>`).join('')}</div>
-    <details class="spiega"><summary>Cosa vuol dire ogni voce</summary><ul>
-      <li><b>Ingresso</b>: % trattenuta su ogni versamento, prima di investirlo. Va alla banca che ti vende il prodotto.</li>
-      <li><b>Costi fissi rata</b>: euro fissi per ogni acquisto o rata del PAC (per un ETF, la commissione del conto titoli).</li>
-      <li><b>Gestione (TER)</b>: prelevata ogni giorno dal valore del fondo dalla società di gestione. * Una parte spesso torna alla banca come "retrocessione".</li>
-      <li><b>Performance</b>: pagata al gestore negli anni in cui batte il suo obiettivo.</li>
-      <li><b>Transazione</b>: commissioni e differenze di prezzo quando il fondo compra e vende titoli.</li>
-      <li><b>Crescita persa</b>: i soldi pagati in costi non sono rimasti investiti e non hanno fruttato.</li>
-      <li><b>Tasse risparmiate</b>: con i costi il guadagno è più basso, quindi alla vendita paghi un po' meno tasse. Questo riduce un po' il danno dei costi, ma non lo compensa mai.</li>
-      <li><b>Costo dei costi</b>: quanto avresti in più alla fine, già tolte le tasse, con un prodotto senza costi. È il numero del riquadro nella pagina principale.</li>
-      <li><b>Bollo</b>: ${pct(num(s.bollo))} l'anno sul valore. <b>Tasse al ritiro</b>: ${pct(num(s.aliquota))} sul guadagno (${pct(num(s.aliquotaStato))} sulla parte in titoli di Stato), solo quando vendi.</li>
-    </ul></details>
-    <p class="hint">Scenario medio, euro nominali, dopo ${s.anni} anni, solo titoli reali accesi.</p>`;
+    h += riga('Soldi pagati', '', pagati, 'sub');
+    h += riga('Guadagno perso su quei soldi', '', (c) => c.costi - pagati(c));
+    h += riga('Totale costi', '', (c) => c.costi, 'sub forte');
+    h += `</tbody></table></div>
+      <div class="legenda-sigle">${col.map((c) => `<span>${dot(c)} <b>${esc(sigla(c.f))}</b> = ${esc(c.f.nome)}</span>`).join('')}</div>
+      <p class="hint">"Guadagno perso": i soldi pagati in costi non sono rimasti investiti, quindi non hanno fruttato negli anni successivi.
+      La gestione (TER) non la vedi mai addebitata: è già tolta dal prezzo della quota, e una parte spesso torna alla banca.
+      Scenario medio, dopo ${s.anni} anni, euro nominali.</p>`;
     corpo.innerHTML = h;
-    const anni = s.anni, aliq = pct(num(s.aliquota)), aliqS = pct(num(s.aliquotaStato));
-    const SPIEGA = {
-      cdc: `<h4>Costo dei costi</h4>
-        <p>È il confronto tra <b>due investimenti identici</b>: stessi soldi versati, stesso mercato, stesso rendimento lordo, stesse tasse. L'unica differenza è che il primo ha i costi del prodotto e il secondo no (un "prodotto ideale" a costo zero).</p>
-        <p class="formula">Costo dei costi = Netto finale senza costi − Netto finale con costi</p>
-        <p>"Netto finale" vuol dire quanto ti resta in tasca dopo aver venduto e pagato le tasse. La differenza misura <b>tutto il danno</b> che i costi ti fanno alla fine dei ${anni} anni: i soldi che ti hanno tolto, più quello che quei soldi avrebbero fruttato, meno il piccolo sconto sulle tasse. Qui fa <b>${euro(cdc)}</b>.</p>`,
-      pag: `<h4>Costi pagati</h4>
-        <p>È la somma, in euro, di tutto quello che il prodotto ti ha trattenuto anno per anno:</p>
-        <p class="formula">Costi pagati = Ingresso + Costi fissi + Gestione + Transazione + Performance + Uscita</p>
-        <ul><li><b>Ingresso</b> e <b>costi fissi</b>: tolti da ogni versamento prima di investirlo.</li>
-          <li><b>Gestione (TER)</b>, <b>transazione</b> e <b>performance</b>: prelevati ogni giorno dal patrimonio del fondo. Non li vedi mai come addebito: il prezzo della quota è semplicemente più basso. Per questo sono i costi più "invisibili", e di solito i più pesanti.</li>
-          <li><b>Uscita</b>: trattenuta quando vendi.</li></ul>
-        <p>Qui fa <b>${euro(pag)}</b> in ${anni} anni.</p>`,
-      persa: `<h4>Crescita persa</h4>
-        <p>È l'effetto dell'<b>interesse composto</b> al contrario. Ogni euro pagato in costi non è più investito, quindi smette di crescere: perdi l'euro e anche tutto quello che avrebbe guadagnato negli anni successivi.</p>
-        <p class="formula">Crescita persa di un costo = Costo × ((1 + r)<sup>anni rimanenti</sup> − 1)</p>
-        <p>Esempio: 100 € di costi pagati nel primo anno, con un rendimento del 6% per altri 9 anni, sarebbero diventati 100 × 1,06<sup>9</sup> ≈ 169 €. La crescita persa è 69 €. I costi pagati all'inizio pesano molto di più di quelli pagati alla fine, e più l'orizzonte è lungo, più questa voce cresce: su 20-30 anni può superare i costi stessi. Qui fa <b>${euro(persa)}</b>.</p>`,
-      risp: `<h4>Tasse risparmiate</h4>
-        <p>In Italia, quando vendi, paghi il ${aliq} sul <b>guadagno</b> (il ${aliqS} sulla parte in titoli di Stato). I costi riducono il guadagno, quindi riducono anche le tasse.</p>
-        <p class="formula">Tasse risparmiate = (Guadagno senza costi − Guadagno con costi) × aliquota</p>
-        <p>In pratica lo Stato "si accolla" circa un quarto del danno dei costi. Ma <b>non li compensa mai</b>: per ogni euro di guadagno che i costi ti tolgono, risparmi al massimo ${aliq.replace('%', '')} centesimi di tasse. Qui fa <b>${euro(risp)}</b>.</p>`,
-    };
-    const info = $('#eq-info');
-    corpo.querySelectorAll('.eq-box').forEach((b) => {
-      const apri = () => {
-        const giaAperto = b.classList.contains('attivo');
-        corpo.querySelectorAll('.eq-box').forEach((x) => { x.classList.remove('attivo'); x.setAttribute('aria-expanded', 'false'); });
-        if (giaAperto) { info.hidden = true; return; }
-        b.classList.add('attivo'); b.setAttribute('aria-expanded', 'true');
-        info.innerHTML = SPIEGA[b.dataset.k]; info.hidden = false;
-      };
-      b.addEventListener('click', apri);
-      b.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); apri(); } });
-    });
     dlg.showModal();
   }
   $('#tiles').addEventListener('click', (e) => { if (e.target.closest('#tile-costi')) apriDettaglioCosti(); });

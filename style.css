@@ -177,3 +177,11 @@ details.spiega ul { margin: 6px 0; padding-left: 20px; } details.spiega li { mar
 .eq-info { border: 1px solid var(--accent); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: .92rem; }
 .eq-info h4 { margin: 0 0 6px; } .eq-info p { margin: 6px 0; } .eq-info ul { margin: 6px 0; padding-left: 20px; }
 .eq-info .formula { font-family: ui-monospace, Menlo, Consolas, monospace; background: var(--bg); border-radius: 6px; padding: 6px 10px; font-size: .88rem; overflow-x: auto; }
+
+#tiles.catena { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+#tiles .tile.costi .v, #tiles .tile.tasse .v { color: #c0392b; }
+#tiles .tile.forte { border: 2px solid var(--accent); }
+#tiles .tile.forte .v { color: var(--accent); }
+.tiles-nota { grid-column: 1 / -1; margin: 0; }
+@media (max-width: 1100px) { #tiles.catena { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 560px) { #tiles.catena { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

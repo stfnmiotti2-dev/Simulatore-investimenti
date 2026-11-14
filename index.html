@@ -9,11 +9,11 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="style.css?v=2.3.2">
+<link rel="stylesheet" href="style.css?v=2.4.0">
 </head>
 <body>
 <header class="topbar">
-  <a href="#home" class="brand">📈 Simulatore <small class="ver">v2.3.2</small></a>
+  <a href="#home" class="brand">📈 Simulatore <small class="ver">v2.4</small></a>
   <nav>
     <a href="#home" data-page="home">Risultati</a>
     <a href="#titoli" data-page="titoli">Titoli</a>
@@ -48,7 +48,7 @@
   <div class="card">
     <h3>Risultati dopo <span id="lbl-anni"></span> anni <small id="lbl-modo"></small></h3>
     <div class="table-wrap"><table id="tab-risultati"></table></div>
-    <p class="hint">"Costo dei costi": quanto avresti in più alla fine (scenario medio, netto) se il prodotto non avesse costi di ingresso, gestione, transazione, performance e uscita. Bollo e tasse restano.</p>
+    <p class="hint">"Costi": quanto avresti in più al ritiro, prima delle tasse, se il prodotto non avesse costi (soldi pagati più il guadagno perso su quei soldi).</p>
   </div>
   <p class="disclaimer">Simulazione ipotetica a scopo educativo: i rendimenti futuri non sono prevedibili e possono essere negativi. Non è una consulenza finanziaria.</p>
 </section>
@@ -204,14 +204,14 @@
 </main>
 
 <dialog id="dlg-costi" aria-labelledby="dlg-costi-titolo">
-  <div class="dlg-testa"><h3 id="dlg-costi-titolo">Dove vanno i costi e le tasse</h3><button type="button" id="dlg-costi-chiudi" aria-label="Chiudi">✕</button></div>
+  <div class="dlg-testa"><h3 id="dlg-costi-titolo">Dove vanno i costi</h3><button type="button" id="dlg-costi-chiudi" aria-label="Chiudi">✕</button></div>
   <div id="dlg-costi-corpo"></div>
 </dialog>
 <div id="toast" role="status"></div>
 
 <script src="lib/chart.umd.min.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
-<script src="calc.js?v=2.3.2"></script>
-<script src="app.js?v=2.3.2"></script>
+<script src="calc.js?v=2.4.0"></script>
+<script src="app.js?v=2.4.0"></script>
 </body>
 </html>
