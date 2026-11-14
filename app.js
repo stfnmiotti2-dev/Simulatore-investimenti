@@ -152,8 +152,8 @@
       ['Versamento mensile', euro(pacTot), euro(pacTot * 12) + ' l\'anno'],
       ['Versato in ' + s.anni + ' anni', euro(fineMed ? fineMed.versato : 0), 'soldi tuoi'],
       ['Valore finale (medio)', euro(v(fineMed)), 'da ' + euro(v(tot.pess.length ? ult(tot.pess) : null)) + ' a ' + euro(v(tot.ott.length ? ult(tot.ott) : null))],
-      ['Costo dei costi', euro(costiTot), 'perso per i costi dei prodotti'],
-    ].map(([k, val, sub]) => `<div class="tile"><div class="k">${k}</div><div class="v">${val}</div><div class="s">${sub}</div></div>`).join('');
+      ['Costo dei costi', euro(costiTot), 'ⓘ tocca per vedere dove vanno', 'tile-costi'],
+    ].map(([k, val, sub, id]) => `<div class="tile${id ? ' cliccabile' : ''}"${id ? ` id="${id}" role="button" tabindex="0"` : ''}><div class="k">${k}</div><div class="v">${val}</div><div class="s">${sub}</div></div>`).join('');
 
     // Lista delle linee a sinistra
     const li = [];
@@ -239,6 +239,69 @@
     }
     $('#tab-risultati').innerHTML = html + '</tbody>';
   }
+
+  // ---------------- Pop-up: dove vanno i costi e le tasse ----------------
+  function apriDettaglioCosti() {
+    const s = stato.impostazioni;
+    const attivi = calcoli().filter((x) => x.f.visibile !== false && !isRif(x.f));
+    const dlg = $('#dlg-costi'), corpo = $('#dlg-costi-corpo');
+    if (!attivi.length) { corpo.innerHTML = '<p>Nessun titolo acceso: accendine uno dalla lista "Mostra nel grafico".</p>'; dlg.showModal(); return; }
+    const fine = (x) => x.r.med[x.r.med.length - 1];
+    const colonne = attivi.map((x) => ({ nome: x.f.nome, colore: x.f.colore, p: fine(x), costoDeiCosti: x.r.costoDeiCosti }));
+    const somma = (fn) => colonne.reduce((a, c) => a + fn(c), 0);
+    const multi = colonne.length > 1;
+    const PRODOTTO = ['ingresso', 'fisso', 'gestione', 'transazione', 'performance', 'uscita'];
+    const pagatiProdotto = (c) => PRODOTTO.reduce((a, k) => a + c.p.voci[k], 0);
+    const GRUPPI = [
+      { chi: '🏦 Banca o chi ti vende il prodotto', voci: [
+        ['ingresso', 'Commissione di ingresso', 'Trattenuta su ogni versamento, prima di investirlo.'],
+        ['fisso', 'Costi fissi per operazione/rata', 'Diritti fissi per ogni acquisto o rata del PAC (per un ETF: la commissione di acquisto del conto titoli).'],
+      ] },
+      { chi: '🏢 Società che gestisce il fondo', voci: [
+        ['gestione', 'Spese di gestione (spese correnti/TER)', 'Prelevate ogni giorno dal valore del fondo. Una parte spesso torna alla banca che te l\'ha venduto ("retrocessione").'],
+        ['performance', 'Commissioni di performance', 'Pagate al gestore negli anni in cui batte il suo obiettivo.'],
+      ] },
+      { chi: '📈 Mercato (intermediari di borsa)', voci: [
+        ['transazione', 'Costi di transazione', 'Il fondo compra e vende azioni e obbligazioni: commissioni e differenze di prezzo pagate a broker e mercati.'],
+      ] },
+      { chi: '🚪 Al ritiro', voci: [
+        ['uscita', 'Commissione di uscita', 'Trattenuta quando vendi, se prevista.'],
+      ] },
+    ];
+    const th = multi ? colonne.map((c) => `<th><span class="dot" style="display:inline-block;vertical-align:-2px;background:${esc(c.colore)}"></span> ${esc(c.nome)}</th>`).join('') : '';
+    const riga = (titolo, spieg, fn, cls) => `<tr class="${cls || ''}"><td>${titolo}${spieg ? `<br><small>${spieg}</small>` : ''}</td><td><b>${euro(somma(fn))}</b></td>${multi ? colonne.map((c) => `<td>${euro(fn(c))}</td>`).join('') : ''}</tr>`;
+    let t = `<div class="table-wrap"><table class="tab-costi"><thead><tr><th>Dove vanno i soldi</th><th>Totale</th>${th}</tr></thead><tbody>`;
+    GRUPPI.forEach((g) => {
+      const voci = g.voci.filter(([k]) => somma((c) => c.p.voci[k]) > 0.5);
+      if (!voci.length) return;
+      t += `<tr class="gruppo-costi"><td colspan="${2 + (multi ? colonne.length : 0)}">${g.chi}</td></tr>`;
+      voci.forEach(([k, nome, spieg]) => { t += riga(nome, esc(spieg), (c) => c.p.voci[k]); });
+    });
+    t += riga('<b>Costi del prodotto pagati</b>', '', pagatiProdotto, 'subtot');
+    t += riga('Crescita persa', 'I soldi pagati in costi non sono più rimasti investiti, quindi non hanno fruttato (già al netto di bollo e tasse più bassi).', (c) => c.costoDeiCosti - pagatiProdotto(c));
+    t += riga('<b>= Costo dei costi</b>', 'Quanto avresti in più alla fine con un prodotto senza costi.', (c) => c.costoDeiCosti, 'subtot');
+    t += `<tr class="gruppo-costi"><td colspan="${2 + (multi ? colonne.length : 0)}">🏛️ Stato</td></tr>`;
+    t += riga('Imposta di bollo', `${pct(num(s.bollo))} l'anno sul valore dell'investimento.`, (c) => c.p.voci.bollo);
+    t += riga('Tasse sul guadagno, al ritiro', `${pct(num(s.aliquota))} sul guadagno (${pct(num(s.aliquotaStato))} sulla parte in titoli di Stato), pagate solo quando vendi.`, (c) => c.p.voci.tasse);
+    t += riga('<b>Totale allo Stato</b>', '', (c) => c.p.voci.bollo + c.p.voci.tasse, 'subtot');
+    t += '</tbody></table></div>';
+    // Riepilogo: dove finiscono i soldi a fine periodo
+    const ver = somma((c) => c.p.versato), nettoTe = somma((c) => c.p.netto), costi = somma(pagatiProdotto), statoTot = somma((c) => c.p.voci.bollo + c.p.voci.tasse);
+    const guad = nettoTe - ver;
+    const tot = Math.max(1, nettoTe + costi + statoTot);
+    const barra = [[nettoTe, 'var(--accent)', 'A te (netto)'], [costi, '#e07b39', 'Costi del prodotto'], [statoTot, '#8c6d4f', 'Stato']]
+      .map(([x, col, et]) => `<span style="width:${Math.max(0, x / tot * 100)}%;background:${col}" title="${et}: ${euro(x)}"></span>`).join('');
+    corpo.innerHTML = `<p class="riass">In <b>${s.anni} anni</b> versi <b>${euro(ver)}</b>. Nello scenario medio, alla vendita: <b>${euro(nettoTe)}</b> restano a te
+      (guadagno netto ${euro(guad)}), <b>${euro(costi)}</b> sono andati in costi del prodotto e <b>${euro(statoTot)}</b> allo Stato.</p>
+      <div class="barra-costi">${barra}</div>
+      <div class="legenda-costi"><span><i style="background:var(--accent)"></i>A te ${euro(nettoTe)}</span><span><i style="background:#e07b39"></i>Costi ${euro(costi)}</span><span><i style="background:#8c6d4f"></i>Stato ${euro(statoTot)}</span></div>
+      ${t}<p class="hint">Scenario medio, euro nominali, titoli reali accesi (i riferimenti sono esclusi). Le tasse si pagano solo se vendi alla fine del periodo.</p>`;
+    dlg.showModal();
+  }
+  $('#tiles').addEventListener('click', (e) => { if (e.target.closest('#tile-costi')) apriDettaglioCosti(); });
+  $('#tiles').addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('#tile-costi')) { e.preventDefault(); apriDettaglioCosti(); } });
+  $('#dlg-costi-chiudi').addEventListener('click', () => $('#dlg-costi').close());
+  $('#dlg-costi').addEventListener('click', (e) => { if (e.target.id === 'dlg-costi') e.target.close(); }); // tocco fuori dal riquadro
 
   $('#lista-serie').addEventListener('click', (e) => {
     const li = e.target.closest('li'); if (!li || !li.dataset.id) return;

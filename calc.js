@@ -26,7 +26,8 @@
    * Simula un titolo mese per mese.
    * f: parametri del titolo, s: impostazioni, rLordo: rendimento lordo annuo %,
    * senzaCosti: se true azzera i costi del prodotto (restano bollo e tasse) per misurare "quanto costano i costi".
-   * Ritorna array per anno (0..anni) con: versato, valore (prima delle tasse), netto (dopo uscita e tasse), tasse.
+   * Ritorna array per anno (0..anni) con: versato, valore (prima delle tasse), netto (dopo uscita e tasse), tasse,
+   * e "voci": euro pagati fino a quell'anno per ingresso, fisso, gestione, transazione, performance, bollo, uscita (se vendi), tasse (se vendi).
    */
   function simula(f, s, rLordo, senzaCosti) {
     const anni = Math.max(1, Math.round(num(s.anni)));
@@ -39,22 +40,36 @@
     const aliquota = (quotaStato * num(s.aliquotaStato) + (1 - quotaStato) * num(s.aliquota)) / 100;
     const rNetto = num(rLordo) / 100 - costi;
     const fattoreMese = Math.pow(Math.max(0, 1 + rNetto), 1 / 12);
+    const fattoreLordo = Math.pow(Math.max(0, 1 + num(rLordo) / 100), 1 / 12);
     const cap = num(f.capitale), pac = num(f.pac);
+    // quote dei costi annui, per dividere il costo mensile tra gestione, transazione e performance
+    const cTot = costoAnnuo(f);
+    const quote = senzaCosti || cTot <= 0 ? { gestione: 0, transazione: 0, performance: 0 }
+      : { gestione: num(f.correnti) / cTot, transazione: num(f.transazione) / cTot, performance: num(f.performance) / cTot };
+    const v = { ingresso: 0, fisso: 0, gestione: 0, transazione: 0, performance: 0, bollo: 0 };
+    const versa = (importo) => { // un versamento: ingresso % e costo fisso li trattiene chi colloca il prodotto
+      const ing = importo * ingresso, fis = Math.min(fisso, importo - ing);
+      v.ingresso += ing; v.fisso += Math.max(0, fis);
+      return Math.max(0, importo - ing - fis);
+    };
 
-    let valore = cap > 0 ? Math.max(0, cap * (1 - ingresso) - fisso) : 0;
+    let valore = cap > 0 ? versa(cap) : 0;
     let versato = cap;
     const out = [];
     const punto = (anno) => {
-      const lordoUscita = valore * (1 - uscita);
+      const costoUscita = valore * uscita;
+      const lordoUscita = valore - costoUscita;
       const guadagno = lordoUscita - versato;
       const tasse = guadagno > 0 ? guadagno * aliquota : 0;
-      out.push({ anno, versato, valore, netto: lordoUscita - tasse, tasse });
+      out.push({ anno, versato, valore, netto: lordoUscita - tasse, tasse, voci: Object.assign({}, v, { uscita: costoUscita, tasse }) });
     };
     punto(0);
     for (let m = 1; m <= anni * 12; m++) {
+      const costoMese = valore * Math.max(0, fattoreLordo - fattoreMese); // quanto il prodotto trattiene questo mese
+      v.gestione += costoMese * quote.gestione; v.transazione += costoMese * quote.transazione; v.performance += costoMese * quote.performance;
       valore *= fattoreMese;
-      if (pac > 0) { valore += Math.max(0, pac * (1 - ingresso) - fisso); versato += pac; }
-      if (m % 12 === 0) { valore = Math.max(0, valore - valore * bollo); punto(m / 12); }
+      if (pac > 0) { valore += versa(pac); versato += pac; }
+      if (m % 12 === 0) { const b = valore * bollo; v.bollo += b; valore = Math.max(0, valore - b); punto(m / 12); }
     }
     return out;
   }
