@@ -1,5 +1,5 @@
 /* Service worker: tiene l'app disponibile anche senza internet. Cambiare VERSIONE a ogni rilascio. */
-const VERSIONE = 'sim-v2.4.0';
+const VERSIONE = 'sim-v2.4.1';
 const FILE = ['./', './index.html', './style.css', './calc.js', './app.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png',
   './lib/chart.umd.min.js',
   './lib/xlsx.full.min.js'];

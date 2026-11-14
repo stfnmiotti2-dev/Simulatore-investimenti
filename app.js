@@ -427,7 +427,7 @@
 
   // ---------------- Lettura scheda da foto/PDF con Gemini ----------------
   const GEMINI_KEY = 'simulatore.geminiKey', GEMINI_MODEL = 'simulatore.geminiModel', MODELLO_DEFAULT = 'gemini-flash-latest';
-  const MODELLI_RISERVA = ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-flash-lite-latest'];
+  const MODELLI_RISERVA = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-flash-lite-latest'];
   const leggiLocale = (k) => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
   const scriviLocale = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) { /* ignorato */ } };
 
