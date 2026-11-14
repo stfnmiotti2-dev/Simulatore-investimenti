@@ -273,15 +273,18 @@
 
     // Riquadri: partono dallo stesso numero del riquadro della pagina principale
     const cdc = tot((c) => c.cdc), pag = tot(pagati), persa = tot((c) => c.persa), risp = tot((c) => c.risp), statoT = tot(allo), ver = tot((c) => c.p.versato), aTe = tot((c) => c.p.netto);
+    const box = (k, tit, val, sub, cls) => `<div class="eq-box ${cls || ''}" data-k="${k}" role="button" tabindex="0" aria-expanded="false"><div class="k">${tit} <span class="i">ⓘ</span></div><div class="v">${val}</div><div class="s">${sub}</div></div>`;
     let h = `<div class="eq">
-      <div class="eq-box forte"><div class="k">Costo dei costi</div><div class="v">${euro(cdc)}</div><div class="s">il numero del riquadro</div></div>
+      ${box('cdc', 'Costo dei costi', euro(cdc), 'il numero del riquadro', 'forte')}
       <div class="eq-op">=</div>
-      <div class="eq-box"><div class="k">Costi pagati</div><div class="v">${euro(pag)}</div><div class="s">soldi trattenuti dal prodotto</div></div>
+      ${box('pag', 'Costi pagati', euro(pag), 'soldi trattenuti dal prodotto')}
       <div class="eq-op">+</div>
-      <div class="eq-box"><div class="k">Crescita persa</div><div class="v">${euro(persa)}</div><div class="s">quanto avrebbero fruttato</div></div>
+      ${box('persa', 'Crescita persa', euro(persa), 'quanto avrebbero fruttato')}
       <div class="eq-op">−</div>
-      <div class="eq-box"><div class="k">Tasse risparmiate</div><div class="v">${euro(risp)}</div><div class="s">meno guadagno, meno tasse</div></div>
+      ${box('risp', 'Tasse risparmiate', euro(risp), 'meno guadagno, meno tasse')}
     </div>
+    <p class="hint eq-hint">Tocca un riquadro per la spiegazione.</p>
+    <div id="eq-info" class="eq-info" hidden></div>
     <p class="riass">A parte, <b>${euro(statoT)}</b> vanno <b>allo Stato</b> (bollo e tasse al ritiro): non sono costi del prodotto, li pagheresti con qualsiasi investimento.
       In ${s.anni} anni versi ${euro(ver)}; alla vendita restano a te <b>${euro(aTe)}</b>.</p>`;
 
@@ -320,6 +323,40 @@
     </ul></details>
     <p class="hint">Scenario medio, euro nominali, dopo ${s.anni} anni, solo titoli reali accesi.</p>`;
     corpo.innerHTML = h;
+    const anni = s.anni, aliq = pct(num(s.aliquota)), aliqS = pct(num(s.aliquotaStato));
+    const SPIEGA = {
+      cdc: `<h4>Costo dei costi</h4>
+        <p>È il confronto tra <b>due investimenti identici</b>: stessi soldi versati, stesso mercato, stesso rendimento lordo, stesse tasse. L'unica differenza è che il primo ha i costi del prodotto e il secondo no (un "prodotto ideale" a costo zero).</p>
+        <p class="formula">Costo dei costi = Netto finale senza costi − Netto finale con costi</p>
+        <p>"Netto finale" vuol dire quanto ti resta in tasca dopo aver venduto e pagato le tasse. La differenza misura <b>tutto il danno</b> che i costi ti fanno alla fine dei ${anni} anni: i soldi che ti hanno tolto, più quello che quei soldi avrebbero fruttato, meno il piccolo sconto sulle tasse. Qui fa <b>${euro(cdc)}</b>.</p>`,
+      pag: `<h4>Costi pagati</h4>
+        <p>È la somma, in euro, di tutto quello che il prodotto ti ha trattenuto anno per anno:</p>
+        <p class="formula">Costi pagati = Ingresso + Costi fissi + Gestione + Transazione + Performance + Uscita</p>
+        <ul><li><b>Ingresso</b> e <b>costi fissi</b>: tolti da ogni versamento prima di investirlo.</li>
+          <li><b>Gestione (TER)</b>, <b>transazione</b> e <b>performance</b>: prelevati ogni giorno dal patrimonio del fondo. Non li vedi mai come addebito: il prezzo della quota è semplicemente più basso. Per questo sono i costi più "invisibili", e di solito i più pesanti.</li>
+          <li><b>Uscita</b>: trattenuta quando vendi.</li></ul>
+        <p>Qui fa <b>${euro(pag)}</b> in ${anni} anni.</p>`,
+      persa: `<h4>Crescita persa</h4>
+        <p>È l'effetto dell'<b>interesse composto</b> al contrario. Ogni euro pagato in costi non è più investito, quindi smette di crescere: perdi l'euro e anche tutto quello che avrebbe guadagnato negli anni successivi.</p>
+        <p class="formula">Crescita persa di un costo = Costo × ((1 + r)<sup>anni rimanenti</sup> − 1)</p>
+        <p>Esempio: 100 € di costi pagati nel primo anno, con un rendimento del 6% per altri 9 anni, sarebbero diventati 100 × 1,06<sup>9</sup> ≈ 169 €. La crescita persa è 69 €. I costi pagati all'inizio pesano molto di più di quelli pagati alla fine, e più l'orizzonte è lungo, più questa voce cresce: su 20-30 anni può superare i costi stessi. Qui fa <b>${euro(persa)}</b>.</p>`,
+      risp: `<h4>Tasse risparmiate</h4>
+        <p>In Italia, quando vendi, paghi il ${aliq} sul <b>guadagno</b> (il ${aliqS} sulla parte in titoli di Stato). I costi riducono il guadagno, quindi riducono anche le tasse.</p>
+        <p class="formula">Tasse risparmiate = (Guadagno senza costi − Guadagno con costi) × aliquota</p>
+        <p>In pratica lo Stato "si accolla" circa un quarto del danno dei costi. Ma <b>non li compensa mai</b>: per ogni euro di guadagno che i costi ti tolgono, risparmi al massimo ${aliq.replace('%', '')} centesimi di tasse. Qui fa <b>${euro(risp)}</b>.</p>`,
+    };
+    const info = $('#eq-info');
+    corpo.querySelectorAll('.eq-box').forEach((b) => {
+      const apri = () => {
+        const giaAperto = b.classList.contains('attivo');
+        corpo.querySelectorAll('.eq-box').forEach((x) => { x.classList.remove('attivo'); x.setAttribute('aria-expanded', 'false'); });
+        if (giaAperto) { info.hidden = true; return; }
+        b.classList.add('attivo'); b.setAttribute('aria-expanded', 'true');
+        info.innerHTML = SPIEGA[b.dataset.k]; info.hidden = false;
+      };
+      b.addEventListener('click', apri);
+      b.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); apri(); } });
+    });
     dlg.showModal();
   }
   $('#tiles').addEventListener('click', (e) => { if (e.target.closest('#tile-costi')) apriDettaglioCosti(); });
